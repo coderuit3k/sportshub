@@ -13,3 +13,15 @@ See README quick start. SQLite file DB, `npm run dev` or `npm run build && npm r
 
 ## Unverified in this environment
 Production PostgreSQL deployment itself was not executed here (no Postgres/Docker on the VM); the SQLite build, seed, tests, typecheck and production `next build` are the verified gates — see docs/master-prompt.md checklist.
+
+## Vercel production (verified flow, added 2026-10-23)
+
+- Project `sportshub` is linked to this GitHub repo; production domain: https://sportshub-pi-five.vercel.app
+- Database: Neon (`sportshub-db`, Singapore) connected through the Vercel integration, which injects `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_PRISMA_URL`, etc. (production + preview). No realtime add-on is used.
+- `AUTH_SECRET` and `NEXT_PUBLIC_APP_URL` are set as project env vars (all targets).
+- `vercel.json` overrides the build command so every production build:
+  1. generates the Prisma client from `prisma/schema.postgresql.prisma`,
+  2. runs `prisma db push` over the UNPOOLED connection,
+  3. runs `prisma/deploy-db.ts` — ensures the `booking_no_overlap_active` tsrange exclusion constraint, and seeds ONLY if the database is empty,
+  4. runs `next build`.
+  All steps are idempotent, so redeploys are safe and never wipe data.
