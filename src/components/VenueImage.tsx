@@ -40,7 +40,7 @@ export default function VenueImage({
     return (
       <div
         aria-hidden
-        className={`flex items-end bg-gradient-to-br p-4 ${gradientClassName} ${emojiAlign === "right" ? "justify-end" : ""} ${className}`}
+        className={`absolute inset-0 flex items-end bg-gradient-to-br p-4 ${gradientClassName} ${emojiAlign === "right" ? "justify-end" : ""} ${className}`}
       >
         <span className={emojiClassName}>
           {primarySportSlug ? sportEmoji(primarySportSlug) : "🏟️"}
@@ -50,7 +50,7 @@ export default function VenueImage({
   }
 
   return (
-    <div className={`relative overflow-hidden ${className}`}>
+    <div className={`absolute inset-0 overflow-hidden ${className}`}>
       <Image
         src={src}
         alt={venueName}
