@@ -51,3 +51,22 @@ coverage: `tests/tz.test.ts`, the timezone block in
 `tests/booking-logic.test.ts` (the unit suite is run under both `TZ=UTC` and
 `TZ=Asia/Ho_Chi_Minh`), and `tests/e2e/timezone.spec.ts` (Saturday 14:00 →
 weekend price, rendered back as 14:00–15:00 in My Bookings).
+
+## Venue photos
+
+Venue banners (cards on `/`, `/venues`, `/favorites`, and the detail-page
+hero) show a real photo of the venue's primary sport. The photos are a
+curated set of direct Unsplash CDN links (`images.unsplash.com`, allowlisted
+in `next.config.ts`), keyed by sport slug in `src/lib/venue-images.ts` —
+no API key, no runtime API calls, no DB column. Each URL was verified
+individually (HTTP 200 + image content type + visual subject check) before
+being added. `venueImage(sportSlug, venueSlug)` picks deterministically
+(stable hash of the venue slug), so different venues of one sport can show
+different photos while a given venue's photo never changes.
+
+Fallback: a sport with no verified photo yet (pickleball, bong-da-mini,
+boi-loi), a venue without a sport, or an image that fails to load renders
+the original gradient banner with the sport emoji instead — implemented in
+`src/components/VenueImage.tsx`, so a frame never renders broken or empty.
+To add a sport, verify a photo the same way and add its URL to the map; no
+other change is needed.

@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getAvailability } from "@/services/bookings";
 import { todayDateISO, formatTimeHHMM } from "@/lib/time/tz";
 import { BookingWidget, FavoriteButton } from "@/components/client-widgets";
+import VenueImage from "@/components/VenueImage";
 import SportIcon from "@/components/SportIcon";
 import AmenityIcon from "@/components/AmenityIcon";
 import { formatVND } from "@/lib/booking/logic";
@@ -57,8 +58,20 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
       <div className="space-y-6">
-        <div className="flex h-56 items-end rounded-3xl bg-gradient-to-br from-primary via-secondary to-accent p-6">
-          <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-primary"><ShieldCheck className="mr-1 inline h-4 w-4" />Sân đã xác thực</span>
+        {/* Hero: same curated sport photo as the venue cards, larger;
+            falls back to the gradient banner when the sport has no photo. */}
+        <div className="relative h-64 overflow-hidden rounded-3xl">
+          <VenueImage
+            primarySportSlug={venue.sports[0]?.sport.slug ?? null}
+            venueSlug={venue.slug}
+            venueName={venue.name}
+            className="absolute inset-0"
+            gradientClassName="from-primary via-secondary to-accent"
+            emojiClassName="text-6xl"
+            emojiAlign="right"
+            sizes="(max-width: 1024px) 100vw, 800px"
+          />
+          <span className="absolute bottom-6 left-6 z-10 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-primary"><ShieldCheck className="mr-1 inline h-4 w-4" />Sân đã xác thực</span>
         </div>
         <div>
           <h1 className="text-3xl font-extrabold">{venue.name}</h1>
