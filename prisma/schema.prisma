@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Roles/status are Strings for portability between SQLite (dev) and PostgreSQL (prod).
+// Valid values are enforced in the service layer + Zod schemas. See docs/database.md.
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  role          String   @default("PLAYER") // PLAYER | OWNER | ADMIN
+  status        String   @default("ACTIVE")
+  avatarUrl     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  preference    UserPreference?
+  sportPrefs    UserSportPreference[]
+  venues        Venue[]            @relation("VenueOwner")
+  staffOf       VenueStaff[]
+  bookings      Booking[]
+  favorites     Favorite[]
+  reviews       Review[]
+  sessions      SportsSession[]    @relation("SessionOrganizer")
+  participants  SessionParticipant[]
+  notifications Notification[]
+  payments      Payment[]
+  auditLogs     AuditLog[]         @relation("AuditActor")
+  idempotencyKeys IdempotencyKey[]
+}
+
+model UserPreference {
+  id                 String  @id @default(cuid())
+  userId             String  @unique
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredDistrict  String?
+  preferredTimeRange String?
+  largerText         Boolean @default(false)
+  notifyEmail        Boolean @default(true)
+  notifyInApp        Boolean @default(true)
+}
+
+model UserSportPreference {
+  id         String @id @default(cuid())
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sportId    String
+  sport      Sport  @relation(fields: [sportId], references: [id], onDelete: Cascade)
+  skillLevel String @default("BEGINNER") // BEGINNER | INTERMEDIATE | ADVANCED
+
+  @@unique([userId, sportId])
+}
+
+model Sport {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  icon        String   @default("Trophy")
+  description String?
+  venues      VenueSport[]
+  facilities  Facility[]
+  sessions    SportsSession[]
+  userPrefs   UserSportPreference[]
+}
+
+model Venue {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  description     String
+  address         String
+  city            String   @default("TP. Hồ Chí Minh")
+  district        String
+  latitude        Float?
+  longitude       Float?
+  phone           String?
+  email           String?
+  venueType       String   @default("MIXED") // INDOOR | OUTDOOR | MIXED
+  beginnerFriendly Boolean @default(false)
+  familyFriendly   Boolean @default(false)
+  verified        Boolean  @default(false)
+  status          String   @default("PENDING_APPROVAL") // PENDING_APPROVAL | APPROVED | REJECTED
+  instantBooking  Boolean  @default(true)
+  ratingAvg       Float    @default(0)
+  ratingCount     Int      @default(0)
+  // Cancellation policy (snapshot source; copied onto each Booking)
+  cancelFullBeforeHours     Int @default(12)
+  cancelPartialBeforeHours  Int @default(4)
+  cancelPartialFeePercent   Int @default(30)
+  ownerId         String
+  owner           User     @relation("VenueOwner", fields: [ownerId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  images      VenueImage[]
+  sports      VenueSport[]
+  amenities   VenueAmenity[]
+  facilities  Facility[]
+  hours       OperatingHour[]
+  blocked     BlockedTime[]
+  staff       VenueStaff[]
+  bookings    Booking[]
+  sessions    SportsSession[]
+  favorites   Favorite[]
+  reviews     Review[]
+
+  @@index([city, district])
+  @@index([status])
+}
+
+model VenueImage {
+  id        String @id @default(cuid())
+  venueId   String
+  venue     Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  url       String // gradient token e.g. "gradient:green" — no external stock URLs in MVP
+  caption   String?
+  sortOrder Int    @default(0)
+}
+
+model VenueSport {
+  id      String @id @default(cuid())
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  sportId String
+  sport   Sport  @relation(fields: [sportId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, sportId])
+}
+
+model VenueAmenity {
+  id      String @id @default(cuid())
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  name    String
+  icon    String @default("Check")
+
+  @@unique([venueId, name])
+}
+
+model Facility {
+  id          String @id @default(cuid())
+  venueId     String
+  venue       Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  sportId     String
+  sport       Sport  @relation(fields: [sportId], references: [id])
+  name        String
+  surface     String?
+  capacity    Int    @default(10)
+  description String?
+  priceRules  PriceRule[]
+  bookings    Booking[]
+  blocked     BlockedTime[]
+
+  @@index([venueId, sportId])
+}
+
+model OperatingHour {
+  id        String @id @default(cuid())
+  venueId   String
+  venue     Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  dayOfWeek Int // 0=Sunday .. 6=Saturday (JS getDay)
+  openTime  String // "06:00"
+  closeTime String // "22:00"
+
+  @@unique([venueId, dayOfWeek])
+}
+
+model PriceRule {
+  id           String   @id @default(cuid())
+  facilityId   String
+  facility     Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  ruleType     String // OFF_PEAK | PEAK | WEEKEND
+  pricePerHour Int
+  startHour    Int?
+  endHour      Int?
+  isWeekend    Boolean?
+}
+
+model BlockedTime {
+  id         String   @id @default(cuid())
+  venueId    String?
+  venue      Venue?   @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  startAt    DateTime
+  endAt      DateTime
+  reason     String?
+}
+
+model VenueStaff {
+  id      String @id @default(cuid())
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    String @default("MANAGER")
+
+  @@unique([venueId, userId])
+}
+
+model Booking {
+  id             String   @id @default(cuid())
+  reference      String   @unique
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  venueId        String
+  venue          Venue    @relation(fields: [venueId], references: [id])
+  facilityId     String
+  facility       Facility @relation(fields: [facilityId], references: [id])
+  startAt        DateTime
+  endAt          DateTime
+  status         String   @default("PENDING") // PENDING|CONFIRMED|REJECTED|CANCELLED|COMPLETED|EXPIRED
+  totalPrice     Int
+  priceSnapshot  String // JSON string: rules applied + policy snapshot
+  policySnapshot String // JSON string: cancellation policy at booking time
+  idempotencyKey String   @unique
+  refundAmount   Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  history  BookingStatusHistory[]
+  payments Payment[]
+
+  @@index([userId, startAt])
+  @@index([facilityId, status])
+  @@index([venueId, status])
+}
+
+model BookingStatusHistory {
+  id         String   @id @default(cuid())
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus   String
+  actorId    String?
+  note       String?
+  createdAt  DateTime @default(now())
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  bookingId String
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  provider  String   @default("SIMULATED")
+  status    String   @default("SIMULATED") // SIMULATED | PENDING | PAID | REFUNDED_SIMULATED
+  amount    Int
+  currency  String   @default("VND")
+  simulated Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model IdempotencyKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resultId  String? // booking id produced by this key
+  createdAt DateTime @default(now())
+}
+
+model SportsSession {
+  id               String   @id @default(cuid())
+  title            String
+  description      String?
+  sportId          String
+  sport            Sport    @relation(fields: [sportId], references: [id])
+  venueId          String?
+  venue            Venue?   @relation(fields: [venueId], references: [id])
+  organizerId      String
+  organizer        User     @relation("SessionOrganizer", fields: [organizerId], references: [id])
+  startAt          DateTime
+  endAt            DateTime
+  skillLevel       String   @default("ALL") // ALL|BEGINNER|INTERMEDIATE|ADVANCED
+  maxParticipants  Int
+  costPerPerson    Int      @default(0)
+  status           String   @default("OPEN") // OPEN|FULL|CANCELLED|COMPLETED
+  requiresApproval Boolean  @default(false)
+  linkedBookingId  String?
+  createdAt        DateTime @default(now())
+
+  participants SessionParticipant[]
+
+  @@index([sportId, venueId, startAt])
+}
+
+model SessionParticipant {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   SportsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String        @default("JOINED") // JOINED|LEFT|PENDING_APPROVAL
+  joinedAt  DateTime      @default(now())
+
+  @@unique([sessionId, userId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venueId   String
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, venueId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venueId   String
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  bookingId String?
+  rating    Int
+  comment   String
+  isSeed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([venueId])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  body       String
+  relatedId  String?
+  dedupeKey  String?  @unique
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
