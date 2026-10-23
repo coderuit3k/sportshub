@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import VenueCard from "@/components/VenueCard";
+import SportIcon from "@/components/SportIcon";
 import { getCurrentUser } from "@/lib/auth";
 import { Search, Users } from "lucide-react";
 import { formatVND } from "@/lib/booking/logic";
@@ -28,7 +29,7 @@ export default async function HomePage() {
     id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address,
     ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly,
     minPrice: v.facilities.flatMap((f) => f.priceRules.map((r) => r.pricePerHour)).sort((a, b) => a - b)[0] ?? null,
-    sports: v.sports.map((s) => s.sport.name), isFavorite: favIds.includes(v.id),
+    sports: v.sports.map((s) => s.sport.name), primarySportSlug: v.sports[0]?.sport.slug ?? null, isFavorite: favIds.includes(v.id),
   });
   return (
     <div className="space-y-12">
@@ -49,7 +50,7 @@ export default async function HomePage() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           {sports.map((s) => (
             <Link key={s.id} href={`/venues?sport=${s.slug}`} className="card p-4 text-center hover:shadow-md">
-              <p className="text-3xl" aria-hidden>🏅</p><p className="mt-1 font-bold">{s.name}</p>
+              <p><SportIcon slug={s.slug} className="text-3xl" /></p><p className="mt-1 font-bold">{s.name}</p>
               <p className="text-sm text-slate-500">{s._count.venues} cụm sân</p>
             </Link>
           ))}
@@ -68,7 +69,7 @@ export default async function HomePage() {
           <div className="grid gap-4 md:grid-cols-3">
             {sessions.map((s) => (
               <article key={s.id} className="card p-4">
-                <p className="chip">{s.sport.name}</p>
+                <p className="chip"><SportIcon slug={s.sport.slug} />{s.sport.name}</p>
                 <h3 className="mt-2 font-bold">{s.title}</h3>
                 <p className="text-sm text-slate-500">{s.venue?.name ?? "Chưa chốt sân"} — {s.startAt.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</p>
                 <p className="mt-1 text-sm">{s.participants.length}/{s.maxParticipants} người — {formatVND(s.costPerPerson)}/người (dự kiến, kèo cộng đồng chưa phải đặt sân đã xác nhận)</p>

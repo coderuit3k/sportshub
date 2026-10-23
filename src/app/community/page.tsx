@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { JoinButton } from "@/components/client-widgets";
+import SportIcon from "@/components/SportIcon";
 import { formatVND } from "@/lib/booking/logic";
 import CreateSessionForm from "./CreateSessionForm";
 
@@ -42,7 +43,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
             const full = s.participants.length >= s.maxParticipants || s.status === "FULL";
             return (
               <article key={s.id} className="card flex flex-col p-5">
-                <div className="mb-2 flex gap-1"><span className="chip">{s.sport.name}</span><span className="chip">{s.skillLevel}</span>{full && <span className="chip !bg-red-100 !text-red-700">Đã đầy</span>}</div>
+                <div className="mb-2 flex gap-1"><span className="chip"><SportIcon slug={s.sport.slug} />{s.sport.name}</span><span className="chip">{s.skillLevel}</span>{full && <span className="chip !bg-red-100 !text-red-700">Đã đầy</span>}</div>
                 <h2 className="font-bold">{s.title}</h2>
                 <p className="mt-1 text-sm text-slate-500">Người tổ chức: {s.organizer.name}</p>
                 <p className="text-sm">{s.venue?.name ?? "Địa điểm linh hoạt"} — {s.startAt.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</p>

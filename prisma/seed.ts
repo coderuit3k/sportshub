@@ -37,12 +37,12 @@ async function main() {
   await prisma.userPreference.create({ data: { userId: player.id, preferredDistrict: "Thủ Đức", preferredTimeRange: "17:00-21:00" } });
 
   const sportsData = [
-    { name: "Cầu lông", slug: "cau-long", icon: "Zap", description: "Sân cầu lông trong nhà, thảm chuẩn thi đấu" },
-    { name: "Pickleball", slug: "pickleball", icon: "Target", description: "Môn vợt đang lên, dễ chơi cho người mới" },
-    { name: "Bóng đá mini", slug: "bong-da-mini", icon: "Circle", description: "Sân cỏ nhân tạo 5-7 người" },
-    { name: "Quần vợt", slug: "quan-vot", icon: "Trophy", description: "Sân tennis ngoài trời / có mái che" },
-    { name: "Bóng rổ", slug: "bong-ro", icon: "Dribbble", description: "Sân bóng rổ trong nhà và ngoài trời" },
-    { name: "Bơi lội", slug: "boi-loi", icon: "Waves", description: "Hồ bơi chuẩn, có làn riêng" },
+    { name: "Cầu lông", slug: "cau-long", icon: "🏸", description: "Sân cầu lông trong nhà, thảm chuẩn thi đấu" },
+    { name: "Pickleball", slug: "pickleball", icon: "🏓", description: "Môn vợt đang lên, dễ chơi cho người mới" },
+    { name: "Bóng đá mini", slug: "bong-da-mini", icon: "⚽", description: "Sân cỏ nhân tạo 5-7 người" },
+    { name: "Quần vợt", slug: "quan-vot", icon: "🎾", description: "Sân tennis ngoài trời / có mái che" },
+    { name: "Bóng rổ", slug: "bong-ro", icon: "🏀", description: "Sân bóng rổ trong nhà và ngoài trời" },
+    { name: "Bơi lội", slug: "boi-loi", icon: "🏊", description: "Hồ bơi chuẩn, có làn riêng" },
   ];
   const sports: Record<string, string> = {};
   for (const s of sportsData) {

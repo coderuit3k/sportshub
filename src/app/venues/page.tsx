@@ -62,7 +62,7 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {sorted.map(({ v, minPrice }) => (
-              <VenueCard key={v.id} v={{ id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address, ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly, minPrice, sports: v.sports.map((s) => s.sport.name), isFavorite: favIds.includes(v.id) }} />
+              <VenueCard key={v.id} v={{ id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address, ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly, minPrice, sports: v.sports.map((s) => s.sport.name), primarySportSlug: v.sports[0]?.sport.slug ?? null, isFavorite: favIds.includes(v.id) }} />
             ))}
           </div>
         )}

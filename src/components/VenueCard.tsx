@@ -1,18 +1,22 @@
 import Link from "next/link";
 import { MapPin, Star, Heart } from "lucide-react";
 import { formatVND } from "@/lib/booking/logic";
+import { sportEmoji } from "@/components/SportIcon";
 
 export interface VenueCardData {
   id: string; slug: string; name: string; district: string; address: string;
   ratingAvg: number; ratingCount: number; beginnerFriendly: boolean; familyFriendly: boolean;
-  minPrice: number | null; sports: string[];
+  minPrice: number | null; sports: string[]; primarySportSlug?: string | null;
   isFavorite?: boolean;
 }
 export default function VenueCard({ v }: { v: VenueCardData }) {
+  // Banner glyph = the venue's primary (first) sport; generic stadium only
+  // when the venue has no sport attached.
+  const bannerEmoji = v.primarySportSlug ? sportEmoji(v.primarySportSlug) : "🏟️";
   return (
     <article className="card flex flex-col">
       <div className="relative flex h-36 items-end bg-gradient-to-br from-primary via-secondary to-primary p-4">
-        <span className="text-4xl" aria-hidden>🏟️</span>
+        <span className="text-4xl" aria-hidden>{bannerEmoji}</span>
         <span className="absolute right-3 top-3 chip bg-white/90">{v.sports[0] ?? "Thể thao"}</span>
         {v.isFavorite && <Heart className="absolute left-3 top-3 h-5 w-5 fill-red-500 text-red-500" />}
       </div>

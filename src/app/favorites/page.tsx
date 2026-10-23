@@ -13,7 +13,7 @@ export default async function FavoritesPage() {
     <div>
       <h1 className="mb-4 text-2xl font-bold">Sân yêu thích</h1>
       {favs.length === 0 ? <p className="card p-8 text-center text-slate-500">Chưa có sân yêu thích. <Link className="font-semibold text-primary" href="/venues">Khám phá sân →</Link></p>
-        : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{favs.map((f) => <VenueCard key={f.id} v={{ id: f.venue.id, slug: f.venue.slug, name: f.venue.name, district: f.venue.district, address: f.venue.address, ratingAvg: f.venue.ratingAvg, ratingCount: f.venue.ratingCount, beginnerFriendly: f.venue.beginnerFriendly, familyFriendly: f.venue.familyFriendly, minPrice: f.venue.facilities.flatMap((x) => x.priceRules.map((r) => r.pricePerHour)).sort((a, b) => a - b)[0] ?? null, sports: f.venue.sports.map((s) => s.sport.name), isFavorite: true }} />)}</div>}
+        : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{favs.map((f) => <VenueCard key={f.id} v={{ id: f.venue.id, slug: f.venue.slug, name: f.venue.name, district: f.venue.district, address: f.venue.address, ratingAvg: f.venue.ratingAvg, ratingCount: f.venue.ratingCount, beginnerFriendly: f.venue.beginnerFriendly, familyFriendly: f.venue.familyFriendly, minPrice: f.venue.facilities.flatMap((x) => x.priceRules.map((r) => r.pricePerHour)).sort((a, b) => a - b)[0] ?? null, sports: f.venue.sports.map((s) => s.sport.name), primarySportSlug: f.venue.sports[0]?.sport.slug ?? null, isFavorite: true }} />)}</div>}
     </div>
   );
 }

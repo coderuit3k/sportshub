@@ -5,6 +5,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { getAvailability } from "@/services/bookings";
 import { todayDateISO, formatTimeHHMM } from "@/lib/time/tz";
 import { BookingWidget, FavoriteButton } from "@/components/client-widgets";
+import SportIcon from "@/components/SportIcon";
+import AmenityIcon from "@/components/AmenityIcon";
 import { formatVND } from "@/lib/booking/logic";
 import { MapPin, Star, Clock, ShieldCheck, Navigation } from "lucide-react";
 import Link from "next/link";
@@ -62,10 +64,10 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
           <h1 className="text-3xl font-extrabold">{venue.name}</h1>
           <p className="mt-1 flex items-center gap-1 text-slate-500"><MapPin className="h-4 w-4" /> {venue.address}, {venue.district}, {venue.city}</p>
           <p className="mt-1 flex items-center gap-1"><Star className="h-4 w-4 fill-accent text-accent" /> <strong>{venue.ratingAvg.toFixed(1)}</strong> ({venue.ratingCount} đánh giá)</p>
-          <div className="mt-2 flex flex-wrap gap-1">{venue.sports.map((s) => <span key={s.id} className="chip">{s.sport.name}</span>)}{venue.beginnerFriendly && <span className="chip">Người mới</span>}{venue.familyFriendly && <span className="chip">Gia đình</span>}</div>
+          <div className="mt-2 flex flex-wrap gap-1">{venue.sports.map((s) => <span key={s.id} className="chip"><SportIcon slug={s.sport.slug} />{s.sport.name}</span>)}{venue.beginnerFriendly && <span className="chip">Người mới</span>}{venue.familyFriendly && <span className="chip">Gia đình</span>}</div>
         </div>
         <section className="card p-5"><h2 className="mb-2 font-bold">Giới thiệu</h2><p>{venue.description}</p>
-          <h3 className="mb-1 mt-4 font-bold">Tiện ích</h3><ul className="flex flex-wrap gap-2">{venue.amenities.map((a) => <li key={a.id} className="chip">{a.name}</li>)}</ul>
+          <h3 className="mb-1 mt-4 font-bold">Tiện ích</h3><ul className="flex flex-wrap gap-2">{venue.amenities.map((a) => <li key={a.id} className="chip"><AmenityIcon name={a.name} className="h-3.5 w-3.5" />{a.name}</li>)}</ul>
           <h3 className="mb-1 mt-4 font-bold">Sân con</h3><ul className="list-inside list-disc">{venue.facilities.map((f) => <li key={f.id}>{f.name} — {f.sport.name} ({f.surface ?? ""}, sức chứa {f.capacity})</li>)}</ul>
         </section>
         <section className="card p-5">
