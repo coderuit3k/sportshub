@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getAvailability } from "@/services/bookings";
 import { BookingWidget, FavoriteButton } from "@/components/client-widgets";
 import { formatVND } from "@/lib/booking/logic";
-import { MapPin, Star, Clock, ShieldCheck } from "lucide-react";
+import { MapPin, Star, Clock, ShieldCheck, Navigation } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,15 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
   }
   const dayNames = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
   const priceRows = venue.facilities[0]?.priceRules ?? [];
+  // Keyless maps (no API key / no maps provider account):
+  // - "Chỉ đường" deep-links to Google Maps directions with a text query.
+  // - The OpenStreetMap embed renders ONLY when the venue has coordinates;
+  //   without them the section degrades to the directions link alone.
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${venue.name} — ${venue.address}, ${venue.district}, ${venue.city}`)}`;
+  const hasCoords = venue.latitude != null && venue.longitude != null;
+  const osmEmbedUrl = hasCoords
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${venue.longitude! - 0.006}%2C${venue.latitude! - 0.004}%2C${venue.longitude! + 0.006}%2C${venue.latitude! + 0.004}&layer=mapnik&marker=${venue.latitude}%2C${venue.longitude}`
+    : null;
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
       <div className="space-y-6">
@@ -54,6 +63,24 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
         <section className="card p-5"><h2 className="mb-2 font-bold">Giới thiệu</h2><p>{venue.description}</p>
           <h3 className="mb-1 mt-4 font-bold">Tiện ích</h3><ul className="flex flex-wrap gap-2">{venue.amenities.map((a) => <li key={a.id} className="chip">{a.name}</li>)}</ul>
           <h3 className="mb-1 mt-4 font-bold">Sân con</h3><ul className="list-inside list-disc">{venue.facilities.map((f) => <li key={f.id}>{f.name} — {f.sport.name} ({f.surface ?? ""}, sức chứa {f.capacity})</li>)}</ul>
+        </section>
+        <section className="card p-5">
+          <h2 className="mb-2 font-bold">Vị trí & chỉ đường</h2>
+          <p className="flex items-center gap-1 text-sm text-slate-600"><MapPin className="h-4 w-4" /> {venue.address}, {venue.district}, {venue.city}</p>
+          <a href={directionsUrl} target="_blank" rel="noreferrer" className="btn-primary mt-3 inline-flex items-center gap-2">
+            <Navigation className="h-4 w-4" /> Chỉ đường (Google Maps)
+          </a>
+          {osmEmbedUrl && (
+            <>
+              <iframe
+                title={`Bản đồ vị trí ${venue.name}`}
+                src={osmEmbedUrl}
+                className="mt-4 h-64 w-full rounded-2xl border"
+                loading="lazy"
+              />
+              <p className="mt-1 text-xs text-slate-400">Bản đồ © OpenStreetMap contributors — vị trí demo gần đúng theo địa chỉ.</p>
+            </>
+          )}
         </section>
         <section className="card p-5">
           <h2 className="mb-2 font-bold">Bảng giá minh bạch</h2>

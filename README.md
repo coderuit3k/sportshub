@@ -42,13 +42,16 @@ npm run dev                 # http://localhost:3000
 
 - `npm run dev` / `npm run build` / `npm run start`
 - `npm run typecheck` — `tsc --noEmit`
-- `npm test` — Vitest unit tests (pure booking logic + admin user-management policy/guards)
-- `npm run test:e2e` — Playwright E2E (booking flow, community join/leave, RBAC guards).
+- `npm test` — Vitest unit tests (pure booking logic, admin user-management policy/guards, rate limiter, change-password validation)
+- `npm run test:e2e` — Playwright E2E (booking flow, change password, community join/leave, RBAC guards).
   Requires the local DB seeded (`npm run db:seed`) and Chromium installed
   (`npx playwright install chromium`). Playwright builds + starts the app itself
   on port 3100 via the config's `webServer`.
 - `npm run db:seed`, `npm run db:push`, `npm run db:generate`
-- CI (`.github/workflows/ci.yml`) runs install → Prisma generate/push/seed → typecheck → unit → E2E on every push/PR.
+- CI (`.github/workflows/ci.yml`) runs install → Prisma generate/push/seed → typecheck → unit → E2E.
+  Note: the workflow file exists in the local working tree but is **not on GitHub yet** (the GitHub App
+  lacks the Workflows permission — the repo owner uploads this one file manually), so hosted CI runs
+  start only after that upload.
 
 ## Features implemented
 
@@ -58,5 +61,13 @@ creation, cancellation refunds from the stored policy snapshot, My Bookings tabs
 community sessions (create/join/leave, capacity + duplicate prevention), user profile/preferences,
 owner dashboard (stats, approve/reject), admin dashboard (venue approval queue, users, audit log),
 in-app notifications, sitemap/robots.
+
+Completion round additions: **rate limiting** on login (10 failed / 10 min per IP+email), register
+(5/hour per IP) and booking creation (30 / 10 min per user) — in-memory sliding window, per-instance
+best-effort on serverless, 429 + `Retry-After` (see `docs/security.md`); **self-service password change**
+in /profile (current password verified, min-10 policy, audit-logged); **keyless maps** on venue pages —
+"Chỉ đường" Google Maps directions link for every venue + OpenStreetMap embed when the venue has
+coordinates (seed venues carry demo coordinates); **`GET /api/health`** readiness probe
+(`{ status: "ok", db: "ok" }`, 503 when the DB is unreachable); branded 404 / error / loading pages.
 
 Docs: `docs/architecture.md`, `docs/database.md`, `docs/api.md`, `docs/security.md`, `docs/deployment.md`, `docs/master-prompt.md`.

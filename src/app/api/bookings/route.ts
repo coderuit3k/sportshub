@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { createBooking } from "@/services/bookings";
+import { bookingLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({
   facilityId: z.string().min(1),
@@ -12,6 +13,8 @@ const schema = z.object({
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
+  const gate = bookingLimiter.consume(`booking:${user.id}`);
+  if (!gate.allowed) return tooManyRequests(gate);
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
   try {

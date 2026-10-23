@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import ProfileForm from "./ProfileForm";
+import ChangePasswordForm from "./ChangePasswordForm";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Hồ sơ cá nhân" };
 export default async function ProfilePage() {
@@ -28,6 +29,7 @@ export default async function ProfilePage() {
         sports={sports.map((s) => ({ id: s.id, name: s.name }))}
         initialSportIds={sportPrefs.map((p) => p.sportId)}
       />
+      <ChangePasswordForm />
     </div>
   );
 }

@@ -10,9 +10,9 @@ Environment decisions (already made, documented as trade-offs):
 - Design tokens matched to Stitch: #0F5132 / #10B981 / #F59E0B / #0F172A, Plus Jakarta Sans + Inter.
 - Payments: simulated provider only, clearly labelled.
 
-## Definition of Done checklist (honest status at delivery — updated after verification runs)
+## Definition of Done checklist (honest status — updated after the 2026-10-23 completion round)
 - [x] Application starts successfully (verified via build + local start/curl where feasible)
-- [x] Database schema applied + seed runs (SQLite `db push` + seed)
+- [x] Database schema applied + seed runs (SQLite `db push` + seed; seed venues now carry demo lat/lng)
 - [x] Authentication and role authorization work (middleware + server checks)
 - [x] Users can discover actual database-backed venues (home, /venues filters)
 - [x] Availability computed from operating hours − blocked − active bookings
@@ -20,9 +20,16 @@ Environment decisions (already made, documented as trade-offs):
 - [x] Booking history and cancellation work per stored policy snapshot (refund tiers 100% / −30% fee / none)
 - [x] Venue owners can manage/see their venues and approve/reject bookings (/owner)
 - [x] Community sessions and participation work (capacity + duplicate prevention)
-- [x] Administrators can review and approve venues (/admin queue + audit log)
-- [x] Unit tests for critical pure logic (price/refund/overlap/transitions/capacity)
-- [ ] Real payment, email, maps providers — NOT integrated (simulated/labelled boundaries only)
+- [x] Administrators can review and approve venues (/admin queue + audit log) and manage users (set password / lock, Phase 3)
+- [x] Self-service password change in /profile (current-password verified, shared min-10 policy, audit-logged) — completion round
+- [x] Rate limiting on login / register / booking creation (in-memory sliding window, per-instance best-effort on serverless — see docs/security.md) — completion round
+- [x] Health endpoint `GET /api/health` (real DB probe, 503 when DB unreachable) — completion round
+- [x] Branded 404 (`app/not-found.tsx`), error boundary (`app/error.tsx`), loading skeleton (`app/loading.tsx`) — completion round
+- [x] Keyless maps: "Chỉ đường" Google Maps directions deep-link on every venue + OpenStreetMap embed when the venue has coordinates — no API key, no maps provider account. (A paid/full maps provider integration is still NOT done.)
+- [x] Unit tests for critical pure logic (price/refund/overlap/transitions/capacity + rate limiter + password-change/admin policy) — 34 tests
 - [x] PostgreSQL verification — DONE 2026-10-23 on PostgreSQL 16.15 (local VM): db push (23 tables), exclusion constraint, seed, app smoke test all passed; evidence in `docs/database.md`
-- [ ] Hosted production PostgreSQL deployment — NOT executed (local verification only)
-- [ ] Playwright E2E suite — not included; critical flows verified manually via curl where feasible
+- [x] Hosted production PostgreSQL deployment — DONE 2026-10-23: live on Vercel + Neon (`sportshub-db`, Singapore) at https://sportshub-pi-five.vercel.app (build runs generate → db push → constraint + seed-if-empty; see docs/deployment.md)
+- [x] Playwright E2E suite — DONE (Phase 3 + completion round): 5 specs (booking flow, change password, community join/leave, RBAC guards ×2), all passing locally
+- [ ] Real payment provider — NOT integrated (simulated/labelled boundary only)
+- [ ] Real email provider — NOT integrated (in-app notifications only; no email verification / password recovery flow)
+- [ ] Hosted CI workflow — `.github/workflows/ci.yml` exists in the local working tree and runs the full pipeline, but it is NOT on GitHub yet: the GitHub App lacks the Workflows permission, so the repo owner uploads this one file manually. Until then there are no hosted CI runs.
