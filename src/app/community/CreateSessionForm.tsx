@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { saigonDateTimeToInstant } from "@/lib/time/tz";
 export default function CreateSessionForm({ sports, venues }: { sports: { id: string; name: string }[]; venues: { id: string; name: string }[] }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -9,10 +10,15 @@ export default function CreateSessionForm({ sports, venues }: { sports: { id: st
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
       const start = String(fd.get("startAt")); const dur = Number(fd.get("duration") ?? 2);
-      const end = new Date(new Date(start).getTime() + dur * 3600_000).toISOString();
+      // The datetime-local value is a wall-clock reading the user means in
+      // Asia/Ho_Chi_Minh — anchor it there, not in the browser's local TZ
+      // (`new Date(start)` would silently shift it on a non-Saigon browser).
+      const [startDate, startTime] = start.split("T");
+      const startInstant = saigonDateTimeToInstant(startDate, startTime ?? "00:00");
+      const end = new Date(startInstant.getTime() + dur * 3600_000).toISOString();
       const r = await fetch("/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         title: fd.get("title"), sportId: fd.get("sportId"), venueId: fd.get("venueId") || undefined,
-        startAt: new Date(start).toISOString(), endAt: end, skillLevel: fd.get("skillLevel"),
+        startAt: startInstant.toISOString(), endAt: end, skillLevel: fd.get("skillLevel"),
         maxParticipants: Number(fd.get("maxParticipants")), costPerPerson: Number(fd.get("costPerPerson") ?? 0),
         description: fd.get("description") || undefined,
       })});

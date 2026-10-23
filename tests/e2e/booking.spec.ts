@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsPlayer, futureDate, toDateInputValue } from "./helpers";
+import { loginAsPlayer, openFirstVenue, futureDate, toDateInputValue, confirmBookingAndReadStatus } from "./helpers";
 
 test.describe("booking flow", () => {
   test("player books an available slot, sees it in My Bookings, then cancels with refund preview", async ({ page }) => {
@@ -8,13 +8,13 @@ test.describe("booking flow", () => {
 
     // Open the first venue from Explore.
     await page.goto("/venues");
-    const venueLink = page.locator('article h3 a[href^="/venues/"]').first();
-    await expect(venueLink).toBeVisible();
-    await venueLink.click();
+    await openFirstVenue(page);
     const widget = page.locator("div.card", { has: page.getByRole("heading", { name: /Đặt sân —/ }) });
     await expect(widget).toBeVisible();
 
     // Pick a future date and the first enabled slot; confirm the booking.
+    // Slots for a newly picked date load asynchronously from
+    // /api/availability — wait for the grid to (re)populate before counting.
     // If a previous test run already used (and cancelled) the same slot, the
     // deterministic idempotency key returns that CANCELLED booking — then we
     // move to another slot/day until a fresh booking succeeds.
@@ -23,15 +23,14 @@ test.describe("booking flow", () => {
     let booked = false;
     outer: for (let dayShift = 0; dayShift < 3 && !booked; dayShift++) {
       const date = futureDate();
-      date.setDate(date.getDate() + dayShift);
+      date.setUTCDate(date.getUTCDate() + dayShift);
       await widget.locator('input[type="date"]').fill(toDateInputValue(date));
       const slots = widget.locator("div.grid button:not([disabled])");
+      await expect(widget.locator("div.grid button").first()).toBeVisible();
       const count = Math.min(await slots.count(), 6);
       for (let i = 0; i < count; i++) {
         await slots.nth(i).click();
-        await widget.getByRole("button", { name: "Xác nhận đặt sân" }).click();
-        await expect(statusBox).toContainText(/Đặt thành công|thất bại|không/i);
-        const text = (await statusBox.textContent()) ?? "";
+        const text = await confirmBookingAndReadStatus(widget, statusBox);
         if (text.includes("Đặt thành công") && !text.includes("CANCELLED")) {
           const match = text.match(/Mã\s+(\S+)/);
           reference = match?.[1] ?? "";

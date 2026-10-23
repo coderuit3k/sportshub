@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { calculatePrice, calculateRefund, isValidTransition, makeReference, ACTIVE_BOOKING_STATUSES, type CancellationPolicy } from "@/lib/booking/logic";
+import { parseDateISO, weekdayOfDateISO, startOfDay, endOfDay, fromWallTime } from "@/lib/time/tz";
 import { getPaymentProvider } from "@/lib/payments/provider";
 import { notify } from "@/lib/notifications";
 
@@ -11,19 +12,27 @@ export interface CreateBookingInput {
   idempotencyKey: string;
 }
 
-export async function getAvailability(facilityId: string, date: Date) {
+/**
+ * Availability for one facility on one calendar date.
+ * `dateISO` is a plain "YYYY-MM-DD" calendar date in the business timezone
+ * (Asia/Ho_Chi_Minh): operating hours are matched by that date's weekday and
+ * slots are built as Saigon wall-clock times converted to instants. The
+ * result is identical no matter what timezone the server process runs in.
+ */
+export async function getAvailability(facilityId: string, dateISO: string) {
   const facility = await prisma.facility.findUnique({
     where: { id: facilityId },
     include: { venue: { include: { hours: true } }, priceRules: true },
   });
   if (!facility) return null;
-  const day = date.getDay();
-  const hours = facility.venue.hours.find((h) => h.dayOfWeek === day);
+  const { year, month, day } = parseDateISO(dateISO);
+  const weekday = weekdayOfDateISO(dateISO);
+  const hours = facility.venue.hours.find((h) => h.dayOfWeek === weekday);
   if (!hours) return { facility, slots: [] as { startAt: Date; endAt: Date; price: number; available: boolean }[] };
   const [oh, om] = hours.openTime.split(":").map(Number);
   const [ch, cm] = hours.closeTime.split(":").map(Number);
-  const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+  const dayStart = startOfDay(dateISO);
+  const dayEnd = endOfDay(dateISO);
   const bookings = await prisma.booking.findMany({
     where: { facilityId, status: { in: ACTIVE_BOOKING_STATUSES }, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
   });
@@ -34,8 +43,9 @@ export async function getAvailability(facilityId: string, date: Date) {
   const openMinutes = oh * 60 + om;
   const closeMinutes = ch * 60 + cm;
   for (let m = openMinutes; m + 60 <= closeMinutes; m += 60) {
-    const s = new Date(dayStart); s.setMinutes(m);
-    const e = new Date(s); e.setHours(e.getHours() + 1);
+    // Slot start = Saigon wall-clock (date, m minutes after midnight) as an instant.
+    const s = fromWallTime(year, month, day, Math.floor(m / 60), m % 60);
+    const e = new Date(s.getTime() + 3_600_000);
     const conflict =
       bookings.some((b) => s.getTime() < b.endAt.getTime() && b.startAt.getTime() < e.getTime()) ||
       blocked.some((b) => s.getTime() < b.endAt.getTime() && b.startAt.getTime() < e.getTime());

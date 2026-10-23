@@ -1,4 +1,9 @@
 // Pure booking logic — no DB imports, unit-testable.
+// All wall-clock readings (weekday, hour) are taken in the business timezone
+// Asia/Ho_Chi_Minh via @/lib/time/tz — never from process-local Date getters,
+// so pricing is identical on a UTC server (Vercel) and a Saigon dev machine.
+import { wallClockParts } from "@/lib/time/tz";
+
 export interface PriceRuleLike {
   ruleType: string; // OFF_PEAK | PEAK | WEEKEND
   pricePerHour: number;
@@ -13,7 +18,7 @@ export interface CancellationPolicy {
 }
 
 export function isWeekend(date: Date): boolean {
-  const d = date.getDay();
+  const d = wallClockParts(date).weekday;
   return d === 0 || d === 6;
 }
 
@@ -23,7 +28,7 @@ export function ruleForHour(rules: PriceRuleLike[], hourStart: Date): PriceRuleL
     const w = rules.find((r) => r.ruleType === "WEEKEND");
     if (w) return w;
   }
-  const h = hourStart.getHours();
+  const h = wallClockParts(hourStart).hour;
   const peak = rules.find(
     (r) => r.ruleType === "PEAK" && (r.startHour == null || h >= r.startHour) && (r.endHour == null || h < r.endHour)
   );
@@ -101,7 +106,8 @@ export function formatVND(amount: number): string {
   return new Intl.NumberFormat("vi-VN").format(amount) + " đ";
 }
 export function makeReference(now = new Date()): string {
-  const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const p = wallClockParts(now); // reference date = Saigon calendar date
+  const ymd = `${p.year}${String(p.month).padStart(2, "0")}${String(p.day).padStart(2, "0")}`;
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `SH-${ymd}-${rand}`;
 }

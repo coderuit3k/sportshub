@@ -4,6 +4,7 @@ import VenueCard from "@/components/VenueCard";
 import { getCurrentUser } from "@/lib/auth";
 import { Search, Users } from "lucide-react";
 import { formatVND } from "@/lib/booking/logic";
+import { todayDateISO, startOfDay } from "@/lib/time/tz";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export default async function HomePage() {
     orderBy: { ratingAvg: "desc" }, take: 6,
   });
   const favIds = user ? (await prisma.favorite.findMany({ where: { userId: user.id } })).map((f) => f.venueId) : [];
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  // "From today" = from 00:00 Asia/Ho_Chi_Minh today, regardless of server TZ.
+  const todayStart = startOfDay(todayDateISO());
   const sessions = await prisma.sportsSession.findMany({
     where: { status: { in: ["OPEN", "FULL"] }, startAt: { gte: todayStart } },
     include: { sport: true, venue: true, participants: { where: { status: "JOINED" } } },

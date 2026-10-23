@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart } from "lucide-react";
 import { formatVND } from "@/lib/booking/logic";
 
@@ -20,25 +20,68 @@ export function FavoriteButton({ venueId, initial }: { venueId: string; initial:
   );
 }
 
-export interface SlotDTO { startAt: string; endAt: string; price: number; available: boolean }
+export interface SlotDTO { startAt: string; endAt: string; startTime: string; price: number; available: boolean }
 export interface FacilityDTO { id: string; name: string; slots: SlotDTO[] }
 
-export function BookingWidget({ facilities, venueName }: { facilities: FacilityDTO[]; venueName: string }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = useState(today);
+interface DisplaySlot { startAt: string; endAt: string; startTime: string; price: number; available: boolean }
+
+export function BookingWidget({ facilities, venueName, initialDate }: { facilities: FacilityDTO[]; venueName: string; initialDate: string }) {
+  // `date` is a plain calendar date (YYYY-MM-DD) in the business timezone
+  // (Asia/Ho_Chi_Minh), supplied by the server as `initialDate`. The widget
+  // NEVER builds instants from it — slot instants come from the server
+  // (initial render or /api/availability), so the day the user clicks is
+  // exactly the Saigon day that gets booked, whatever TZ the browser runs in.
+  const [date, setDate] = useState(initialDate);
   const [facilityId, setFacilityId] = useState(facilities[0]?.id ?? "");
-  const [slot, setSlot] = useState<SlotDTO | null>(null);
+  const [slot, setSlot] = useState<DisplaySlot | null>(null);
   const [duration, setDuration] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Slots are precomputed server-side for the venue's "today" view; for other dates we
-  // reuse the same daily template and shift by date (availability re-validated on server at booking).
-  const facility = facilities.find((f) => f.id === facilityId);
-  const slots = (facility?.slots ?? []).map((s) => {
-    const st = new Date(`${date}T${s.startAt.slice(11, 19)}`);
-    const en = new Date(st.getTime() + duration * 3600_000);
-    return { ...s, startAt: st.toISOString(), endAt: en.toISOString(), price: s.price * duration };
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotError, setSlotError] = useState<string | null>(null);
+
+  const cacheKey = `${facilityId}|${date}`;
+  const [slotCache, setSlotCache] = useState<Record<string, SlotDTO[]>>(() => {
+    const init: Record<string, SlotDTO[]> = {};
+    for (const f of facilities) init[`${f.id}|${initialDate}`] = f.slots;
+    return init;
   });
+  const hourly = slotCache[cacheKey];
+
+  // Fetch the true slots (weekday, price rules, conflicts) for any
+  // facility/date not rendered by the server.
+  useEffect(() => {
+    if (!facilityId || hourly || slotError) return;
+    let cancelled = false;
+    setLoadingSlots(true);
+    fetch(`/api/availability?facilityId=${encodeURIComponent(facilityId)}&date=${encodeURIComponent(date)}`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error("fetch failed");
+        const j = (await r.json()) as { slots: SlotDTO[] };
+        if (!cancelled) setSlotCache((c) => ({ ...c, [cacheKey]: j.slots }));
+      })
+      .catch(() => { if (!cancelled) setSlotError("Không tải được khung giờ — thử lại sau."); })
+      .finally(() => { if (!cancelled) setLoadingSlots(false); });
+    return () => { cancelled = true; };
+  }, [facilityId, date, cacheKey, hourly, slotError]);
+
+  // Aggregate consecutive hourly slots into bookable starts for `duration`:
+  // price is the real per-hour sum (crossing the peak boundary prices each
+  // hour by its own rule) and a start is available only if every covered
+  // hour is free. The server still re-validates everything at booking time.
+  const slots: DisplaySlot[] = [];
+  if (hourly) {
+    for (let i = 0; i + duration <= hourly.length; i++) {
+      const group = hourly.slice(i, i + duration);
+      slots.push({
+        startAt: group[0].startAt,
+        endAt: group[group.length - 1].endAt,
+        startTime: group[0].startTime,
+        price: group.reduce((sum, s) => sum + s.price, 0),
+        available: group.every((s) => s.available),
+      });
+    }
+  }
   const total = slot ? slot.price : 0;
 
   async function confirm() {
@@ -58,30 +101,32 @@ export function BookingWidget({ facilities, venueName }: { facilities: FacilityD
     <div className="card p-5">
       <h3 className="mb-4 text-lg font-bold">Đặt sân — {venueName}</h3>
       <p className="label">Bước 1: Chọn ngày</p>
-      <input type="date" className="input mb-3" value={date} min={today} onChange={(e) => { setDate(e.target.value); setSlot(null); }} />
+      <input type="date" className="input mb-3" value={date} min={initialDate} onChange={(e) => { setDate(e.target.value); setSlot(null); setSlotError(null); }} />
       <p className="label">Bước 2: Chọn sân con & thời lượng</p>
       <div className="mb-3 flex gap-2">
-        <select className="input" value={facilityId} onChange={(e) => { setFacilityId(e.target.value); setSlot(null); }} aria-label="Sân con">
+        <select className="input" value={facilityId} onChange={(e) => { setFacilityId(e.target.value); setSlot(null); setSlotError(null); }} aria-label="Sân con">
           {facilities.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
-        <select className="input !w-32" value={duration} onChange={(e) => setDuration(Number(e.target.value))} aria-label="Thời lượng">
+        <select className="input !w-32" value={duration} onChange={(e) => { setDuration(Number(e.target.value)); setSlot(null); }} aria-label="Thời lượng">
           {[1, 2, 3].map((h) => <option key={h} value={h}>{h} giờ</option>)}
         </select>
       </div>
       <p className="label">Bước 3: Chọn khung giờ (giá/giờ theo bảng giá sân)</p>
       <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {slots.length === 0 && <p className="col-span-full text-sm text-slate-500">Sân đóng cửa ngày này.</p>}
+        {loadingSlots && <p className="col-span-full text-sm text-slate-500">Đang tải khung giờ...</p>}
+        {!loadingSlots && slotError && <p className="col-span-full text-sm text-red-600">{slotError}</p>}
+        {!loadingSlots && !slotError && slots.length === 0 && <p className="col-span-full text-sm text-slate-500">Sân đóng cửa ngày này.</p>}
         {slots.map((s) => (
           <button key={s.startAt} disabled={!s.available}
             onClick={() => setSlot(s)}
             className={`rounded-lg border px-2 py-2 text-sm ${!s.available ? "cursor-not-allowed bg-slate-100 text-slate-400" : slot?.startAt === s.startAt ? "border-primary bg-primary text-white" : "hover:border-primary"}`}>
-            {s.startAt.slice(11, 16)}<br /><span className="text-xs">{s.available ? formatVND(s.price / duration) : "Đã đặt"}</span>
+            {s.startTime}<br /><span className="text-xs">{s.available ? formatVND(Math.round(s.price / duration)) : "Đã đặt"}</span>
           </button>
         ))}
       </div>
       {slot && (
         <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm">
-          <p>Chi tiết giá: {duration} giờ × từ {formatVND(slot.price / duration)}/giờ</p>
+          <p>Tổng giá {duration} giờ từ {slot.startTime}: các giờ được tính theo đúng bảng giá từng khung giờ.</p>
           <p className="text-base font-bold text-primary">Tổng (tính lại ở server): {formatVND(total)}</p>
           <p className="text-xs text-slate-500">Thanh toán MÔ PHỎNG qua VietQR/MoMo/tại quầy — chưa thu tiền thật.</p>
         </div>

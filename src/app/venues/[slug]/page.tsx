@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getAvailability } from "@/services/bookings";
+import { todayDateISO, formatTimeHHMM } from "@/lib/time/tz";
 import { BookingWidget, FavoriteButton } from "@/components/client-widgets";
 import { formatVND } from "@/lib/booking/logic";
 import { MapPin, Star, Clock, ShieldCheck, Navigation } from "lucide-react";
@@ -29,12 +30,15 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
   const user = await getCurrentUser();
   const isFav = user ? !!(await prisma.favorite.findUnique({ where: { userId_venueId: { userId: user.id, venueId: venue.id } } })) : false;
 
+  // Slots are computed for "today" in the business timezone (Asia/Ho_Chi_Minh);
+  // the widget fetches other dates from /api/availability with the same semantics.
+  const initialDate = todayDateISO();
   const facilitiesDto = [];
   for (const f of venue.facilities) {
-    const avail = await getAvailability(f.id, new Date());
+    const avail = await getAvailability(f.id, initialDate);
     facilitiesDto.push({
       id: f.id, name: `${f.name} — ${f.sport.name}`,
-      slots: (avail?.slots ?? []).map((s) => ({ startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(), price: s.price, available: s.available })),
+      slots: (avail?.slots ?? []).map((s) => ({ startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(), startTime: formatTimeHHMM(s.startAt), price: s.price, available: s.available })),
     });
   }
   const dayNames = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
@@ -103,13 +107,13 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
         </section>
         {venue.sessions.length > 0 && (
           <section className="card p-5"><h2 className="mb-2 font-bold">Kèo sắp tới tại sân này</h2>
-            {venue.sessions.map((s) => <p key={s.id} className="text-sm">{s.title} — {s.startAt.toLocaleString("vi-VN")} <Link className="font-semibold text-primary" href="/community">Xem kèo →</Link></p>)}
+            {venue.sessions.map((s) => <p key={s.id} className="text-sm">{s.title} — {s.startAt.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })} <Link className="font-semibold text-primary" href="/community">Xem kèo →</Link></p>)}
           </section>
         )}
       </div>
       <div className="space-y-4">
         {user ? <FavoriteButton venueId={venue.id} initial={isFav} /> : <Link href="/login" className="btn-outline w-full">Đăng nhập để lưu yêu thích & đặt sân</Link>}
-        <BookingWidget facilities={facilitiesDto} venueName={venue.name} />
+        <BookingWidget facilities={facilitiesDto} venueName={venue.name} initialDate={initialDate} />
       </div>
     </div>
   );
