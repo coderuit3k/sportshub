@@ -17,7 +17,6 @@ export default function LoginPage() {
         <div><label className="label" htmlFor="password">Mật khẩu</label><input id="password" name="password" type="password" required className="input" autoComplete="current-password" /></div>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         <button className="btn-primary w-full" type="submit">Đăng nhập</button>
-        <p className="text-sm text-slate-500">Tài khoản demo (chỉ dùng local): player@sportshub.local / owner@sportshub.local / admin@sportshub.local — mật khẩu <code>Password123!</code></p>
         <p className="text-sm">Chưa có tài khoản? <a className="font-semibold text-primary" href="/register">Đăng ký</a></p>
       </form>
     </div>

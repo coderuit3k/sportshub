@@ -32,12 +32,23 @@ npm run dev                 # http://localhost:3000
 | Venue Owner | owner@sportshub.local | `Password123!` |
 | Admin | admin@sportshub.local | `Password123!` |
 
+> **Production (quan trọng):** the seeded demo accounts above ship with a PUBLIC
+> password. Immediately after the first production deploy, sign in as admin and
+> rotate or lock every demo account from **Admin → Người dùng** ("Đặt mật khẩu
+> mới" / "Khoá tài khoản" — see docs/security.md, "Demo-account rotation").
+> The login page no longer displays these credentials (Phase 3).
+
 ## Scripts
 
 - `npm run dev` / `npm run build` / `npm run start`
 - `npm run typecheck` — `tsc --noEmit`
-- `npm test` — Vitest unit tests for pure booking logic (price, refund, overlap, transitions, capacity)
+- `npm test` — Vitest unit tests (pure booking logic + admin user-management policy/guards)
+- `npm run test:e2e` — Playwright E2E (booking flow, community join/leave, RBAC guards).
+  Requires the local DB seeded (`npm run db:seed`) and Chromium installed
+  (`npx playwright install chromium`). Playwright builds + starts the app itself
+  on port 3100 via the config's `webServer`.
 - `npm run db:seed`, `npm run db:push`, `npm run db:generate`
+- CI (`.github/workflows/ci.yml`) runs install → Prisma generate/push/seed → typecheck → unit → E2E on every push/PR.
 
 ## Features implemented
 

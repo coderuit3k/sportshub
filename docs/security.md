@@ -14,6 +14,17 @@ The master prompt suggests Auth.js. This build uses an equivalent established ap
 - Payments: simulated provider only; no card data is ever collected or stored.
 - Private participant contact info is not exposed in community pages.
 
+## Demo-account rotation (production procedure, Phase 3)
+The seed creates player/owner/admin demo accounts with the public password `Password123!` (local-dev convenience, documented in README). On production this is a known, must-fix exposure:
+
+1. Right after the first production deploy, sign in as the seeded admin.
+2. Go to **Admin → Người dùng**. For every demo account either:
+   - **Đặt mật khẩu mới** — sets a new password (min 10 chars, bcrypt-hashed server-side via `POST /api/admin/users/[id]` with `action: "set-password"`), or
+   - **Khoá tài khoản** — replaces the hash with a hash of an unknown random value (`action: "lock"`), so no known password can sign in; unlock later by setting a new password.
+3. An admin cannot lock their own account (self-lock guard, `canLockAccount` in `src/lib/admin/user-admin.ts`). Rotate the admin's own password last, from its own row, then sign in again with the new password.
+4. Every set-password/lock action writes an `AuditLog` entry (`USER_PASSWORD_RESET` / `USER_LOCKED`, actor + target email) visible in the admin Audit Log section.
+5. The `/login` page does not display demo credentials anymore (removed in Phase 3); credentials live only in local-dev docs (README/seed).
+
 ## Known limitations / production hardening
 - No rate limiting yet on login/register (add e.g. Upstash/edge limiter before production).
 - No email verification / password recovery flow (auth abstraction leaves room; document as Phase 2).

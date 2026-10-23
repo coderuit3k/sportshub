@@ -132,6 +132,54 @@ export function JoinButton({ sessionId, initialJoined, full }: { sessionId: stri
   );
 }
 
+export function AdminUserControls({ userId, userEmail, isSelf }: { userId: string; userEmail: string; isSelf: boolean }) {
+  const [showForm, setShowForm] = useState(false);
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function post(body: Record<string, string>) {
+    setBusy(true); setMsg(null);
+    const r = await fetch(`/api/admin/users/${userId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    setBusy(false);
+    if (!r.ok) { setMsg(j.error ?? "Thất bại"); return false; }
+    return true;
+  }
+
+  return (
+    <span className="inline-flex flex-col gap-2">
+      <span className="inline-flex flex-wrap gap-2">
+        <button className="btn-outline !px-3 !py-1.5 text-sm" disabled={busy} onClick={() => { setShowForm((s) => !s); setMsg(null); }}>
+          Đặt mật khẩu mới
+        </button>
+        {!isSelf && (
+          <button className="btn-outline !px-3 !py-1.5 text-sm !border-red-300 !text-red-600" disabled={busy}
+            onClick={async () => {
+              if (!window.confirm(`Khoá tài khoản ${userEmail}? Người dùng sẽ không đăng nhập được bằng bất kỳ mật khẩu nào đã biết. Bạn có thể mở khoá bằng cách đặt mật khẩu mới.`)) return;
+              if (await post({ action: "lock" })) { setMsg("Đã khoá tài khoản."); window.location.reload(); }
+            }}>
+            Khoá tài khoản
+          </button>
+        )}
+      </span>
+      {showForm && (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <input type="password" className="input !w-56 !py-1.5 text-sm" placeholder="Mật khẩu mới (≥ 10 ký tự)" autoComplete="new-password"
+            value={password} onChange={(e) => setPassword(e.target.value)} aria-label={`Mật khẩu mới cho ${userEmail}`} />
+          <button className="btn-primary !px-3 !py-1.5 text-sm" disabled={busy || password.length === 0}
+            onClick={async () => {
+              if (await post({ action: "set-password", password })) { setPassword(""); setShowForm(false); setMsg("Đã đặt mật khẩu mới."); }
+            }}>
+            Lưu mật khẩu
+          </button>
+        </span>
+      )}
+      {msg && <span className="text-sm text-slate-600" role="status">{msg}</span>}
+    </span>
+  );
+}
+
 export function AdminVenueButtons({ venueId }: { venueId: string }) {
   return (
     <span className="inline-flex gap-2">
