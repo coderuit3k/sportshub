@@ -25,8 +25,8 @@ export default async function AdminPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Super Admin — giám sát nền tảng</h1>
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="card p-4"><p className="text-sm text-slate-500">GMV (giá trị đặt xác nhận, mô phỏng)</p><p className="text-2xl font-extrabold text-primary">{formatVND(gmv)}</p></div>
-        <div className="card p-4"><p className="text-sm text-slate-500">Phí nền tảng 3% (escrow mô phỏng)</p><p className="text-2xl font-extrabold">{formatVND(escrow)}</p></div>
+        <div className="card p-4"><p className="text-sm text-slate-500">GMV (giá trị đặt đã xác nhận)</p><p className="text-2xl font-extrabold text-primary">{formatVND(gmv)}</p></div>
+        <div className="card p-4"><p className="text-sm text-slate-500">Phí nền tảng 3%</p><p className="text-2xl font-extrabold">{formatVND(escrow)}</p></div>
         <div className="card p-4"><p className="text-sm text-slate-500">Cụm sân đối tác / người dùng</p><p className="text-2xl font-extrabold">{venuesCount} / {usersCount}</p></div>
         <div className="card p-4"><p className="text-sm text-slate-500">KYC / duyệt sân chờ — kèo cộng đồng</p><p className="text-2xl font-extrabold text-accent">{pendingVenues.length} chờ — {sessionsCount} kèo</p></div>
       </div>
@@ -43,7 +43,7 @@ export default async function AdminPage() {
         <h2 className="mb-3 font-bold">Người dùng</h2>
         <table className="w-full text-sm"><thead><tr className="text-left text-slate-500"><th className="py-1">Tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
           <tbody>{users.map((u) => <tr key={u.id} className="border-t"><td className="py-2">{u.name}</td><td>{u.email}</td><td>{u.role}</td><td>{u.status}</td><td className="py-2"><AdminUserControls userId={u.id} userEmail={u.email} isSelf={u.id === user.id} /></td></tr>)}</tbody></table>
-        <p className="mt-3 text-sm text-slate-500">Đặt mật khẩu mới: dùng để xoay vòng (rotate) các tài khoản demo sau khi deploy production. Khoá tài khoản: thay mật khẩu bằng giá trị ngẫu nhiên không ai biết — mở khoá bằng cách đặt mật khẩu mới. Mọi thao tác đều ghi Audit Log.</p>
+        <p className="mt-3 text-sm text-slate-500">Đặt mật khẩu mới: dùng để xoay vòng (rotate) các tài khoản khởi tạo sau khi deploy production. Khoá tài khoản: thay mật khẩu bằng giá trị ngẫu nhiên không ai biết — mở khoá bằng cách đặt mật khẩu mới. Mọi thao tác đều ghi Audit Log.</p>
       </section>
       <section className="card p-5">
         <h2 className="mb-3 font-bold">Audit Log (thời gian thực từ DB)</h2>

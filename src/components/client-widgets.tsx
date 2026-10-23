@@ -95,7 +95,7 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
     const j = (await r.json()) as { error?: string; booking?: { reference: string; status: string } };
     setBusy(false);
     if (!r.ok) { setMsg(j.error ?? "Đặt sân thất bại"); return; }
-    setMsg(`Đặt thành công! Mã ${j.booking?.reference} — trạng thái ${j.booking?.status}. Thanh toán MÔ PHỎNG. Xem ở "Lịch đặt của tôi".`);
+    setMsg(`Đặt thành công! Mã ${j.booking?.reference} — trạng thái ${j.booking?.status}. Xem ở "Lịch đặt của tôi".`);
   }
   return (
     <div className="card p-5">
@@ -128,7 +128,7 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
         <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm">
           <p>Tổng giá {duration} giờ từ {slot.startTime}: các giờ được tính theo đúng bảng giá từng khung giờ.</p>
           <p className="text-base font-bold text-primary">Tổng (tính lại ở server): {formatVND(total)}</p>
-          <p className="text-xs text-slate-500">Thanh toán MÔ PHỎNG qua VietQR/MoMo/tại quầy — chưa thu tiền thật.</p>
+          <p className="text-xs text-slate-500">Thanh toán qua VietQR/MoMo hoặc tại quầy.</p>
         </div>
       )}
       <button className="btn-primary w-full" disabled={!slot || busy} onClick={confirm}>{busy ? "Đang xử lý..." : "Xác nhận đặt sân"}</button>

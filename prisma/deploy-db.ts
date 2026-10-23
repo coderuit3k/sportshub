@@ -9,6 +9,10 @@
  *    is destructive (deleteMany), so it must never run against populated data.
  * 3. Backfills demo coordinates for seed venues whose latitude is still NULL
  *    (production was seeded before coordinates existed).
+ * 4. Scrubs legacy "demo" wording from production rows that were seeded with
+ *    the old copy (venue names/addresses/descriptions, review comments,
+ *    session descriptions, booking notifications). Exact-match replacements,
+ *    only rows that actually change are updated — a no-op once scrubbed.
  *
  * Uses DATABASE_URL from the environment; the build command points it at
  * DATABASE_URL_UNPOOLED for DDL reliability (Neon pooled endpoints are not
@@ -74,18 +78,99 @@ async function backfillVenueCoordinates(): Promise<void> {
   }
 }
 
+function applyReplacements(text: string, pairs: Array<[string, string]>): string {
+  let out = text;
+  for (const [from, to] of pairs) out = out.split(from).join(to);
+  return out;
+}
+
+const OLD_SESSION_DESCRIPTION = "Kèo cộng đồng demo — chưa phải đặt sân đã xác nhận.";
+const NEW_SESSION_DESCRIPTION = "Kèo cộng đồng mở — tham gia tự do, chưa phải đặt sân đã xác nhận.";
+
+/**
+ * Production was originally seeded with copy that labelled data as demo /
+ * simulated. The site copy has since been neutralised, so rewrite the stored
+ * rows to match. Idempotent: rows are only updated when a replacement
+ * actually changes their text, so repeat runs are a no-op.
+ * Exported for local verification (see DEPLOY_DB_IMPORT_ONLY below).
+ */
+export async function scrubDemoWording(): Promise<void> {
+  let venuesUpdated = 0;
+  const venues = await prisma.venue.findMany({
+    select: { id: true, name: true, address: true, description: true },
+  });
+  for (const v of venues) {
+    const name = applyReplacements(v.name, [[" (demo hư cấu)", ""]]);
+    const address = applyReplacements(v.address, [[" (địa chỉ demo)", ""]]);
+    const description = applyReplacements(v.description, [
+      [" Dữ liệu demo hư cấu.", ""],
+      ["Dữ liệu demo hư cấu.", ""],
+    ]);
+    if (name !== v.name || address !== v.address || description !== v.description) {
+      await prisma.venue.update({ where: { id: v.id }, data: { name, address, description } });
+      venuesUpdated++;
+    }
+  }
+
+  let reviewsUpdated = 0;
+  const reviews = await prisma.review.findMany({ select: { id: true, comment: true } });
+  for (const r of reviews) {
+    const comment = applyReplacements(r.comment, [[" (đánh giá seed/demo)", ""]]);
+    if (comment !== r.comment) {
+      await prisma.review.update({ where: { id: r.id }, data: { comment } });
+      reviewsUpdated++;
+    }
+  }
+
+  let sessionsUpdated = 0;
+  const sessions = await prisma.sportsSession.findMany({ select: { id: true, description: true } });
+  for (const s of sessions) {
+    if (s.description === OLD_SESSION_DESCRIPTION) {
+      await prisma.sportsSession.update({ where: { id: s.id }, data: { description: NEW_SESSION_DESCRIPTION } });
+      sessionsUpdated++;
+    }
+  }
+
+  const notificationFixes: Array<[string, string]> = [
+    [" (thanh toán MÔ PHỎNG, chưa thu tiền thật)", ""],
+    [" (thanh toán mô phỏng)", ""],
+    ["hoàn mô phỏng: ", "hoàn: "],
+    ["hoàn mô phỏng ", "hoàn "],
+  ];
+  let notificationsUpdated = 0;
+  const notifications = await prisma.notification.findMany({ select: { id: true, title: true, body: true } });
+  for (const n of notifications) {
+    const title = applyReplacements(n.title, notificationFixes);
+    const body = applyReplacements(n.body, notificationFixes);
+    if (title !== n.title || body !== n.body) {
+      await prisma.notification.update({ where: { id: n.id }, data: { title, body } });
+      notificationsUpdated++;
+    }
+  }
+
+  console.log(
+    `[deploy-db] demo-wording scrub: venues=${venuesUpdated} reviews=${reviewsUpdated} ` +
+      `sessions=${sessionsUpdated} notifications=${notificationsUpdated} updated`,
+  );
+}
+
 async function main(): Promise<void> {
   await ensureConstraint();
   await seedIfEmpty();
   await backfillVenueCoordinates();
+  await scrubDemoWording();
 }
 
-main()
-  .then(async () => {
-    await prisma.$disconnect();
-  })
-  .catch(async (error: unknown) => {
-    console.error("[deploy-db] failed", error);
-    await prisma.$disconnect();
-    process.exit(1);
-  });
+// Guarded so local verification harnesses can import scrubDemoWording
+// without triggering the full production bootstrap.
+if (!process.env.DEPLOY_DB_IMPORT_ONLY) {
+  main()
+    .then(async () => {
+      await prisma.$disconnect();
+    })
+    .catch(async (error: unknown) => {
+      console.error("[deploy-db] failed", error);
+      await prisma.$disconnect();
+      process.exit(1);
+    });
+}

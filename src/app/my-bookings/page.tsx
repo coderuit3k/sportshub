@@ -31,7 +31,7 @@ export default async function MyBookingsPage({ searchParams }: { searchParams: P
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold">Lịch đặt của tôi</h1>
-      <p className="mb-4 text-sm text-slate-500">Hồ sơ: {user.name} — thanh toán hiển thị là MÔ PHỎNG.</p>
+      <p className="mb-4 text-sm text-slate-500">Hồ sơ: {user.name}.</p>
       <div className="mb-6 flex flex-wrap gap-2" role="tablist">
         {TABS.map((t) => (
           <Link key={t.key} href={`/my-bookings?tab=${t.key}`} className={`rounded-full px-4 py-2 text-sm font-semibold ${active.key === t.key ? "bg-primary text-white" : "bg-white border"}`}>
@@ -50,9 +50,9 @@ export default async function MyBookingsPage({ searchParams }: { searchParams: P
                     <h2 className="font-bold">{b.venue.name}</h2>
                     <p className="text-sm text-slate-500">{b.facility.name} — {fmt(b.startAt)} → {fmt(b.endAt)}</p>
                     <p className="text-sm">Mã: <code className="font-semibold">#{b.reference}</code> — Trạng thái: <strong>{b.status}</strong></p>
-                    <p className="text-sm">Tổng: <strong className="text-primary">{formatVND(b.totalPrice)}</strong> — {b.payments.map((p) => `${p.provider}:${p.status}`).join(", ") || "chưa có thanh toán"}</p>
-                    {preview && <p className="text-sm text-slate-500">Nếu hủy bây giờ: hoàn mô phỏng {formatVND(preview.refundAmount)} (mức {preview.tier}).</p>}
-                    <p className="mt-1 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold">QR check-in (demo): {b.reference}</p>
+                    <p className="text-sm">Tổng: <strong className="text-primary">{formatVND(b.totalPrice)}</strong> — {b.payments.length === 0 ? "Chưa có thanh toán" : b.payments.some((p) => p.amount < 0) ? "Đã hoàn tiền" : "Đã thanh toán"}</p>
+                    {preview && <p className="text-sm text-slate-500">Nếu hủy bây giờ: hoàn {formatVND(preview.refundAmount)} (mức {preview.tier}).</p>}
+                    <p className="mt-1 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold">QR check-in: {b.reference}</p>
                   </div>
                   {(b.status === "CONFIRMED" || b.status === "PENDING") && <BookingActionButtons bookingId={b.id} actions={["cancel"]} />}
                 </div>

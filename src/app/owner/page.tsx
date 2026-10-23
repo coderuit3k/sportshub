@@ -25,7 +25,7 @@ export default async function OwnerPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Kênh chủ sân — CƠ SỞ PRO-ACTIVE</h1>
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="card p-4"><p className="text-sm text-slate-500">Doanh thu (giá trị đặt đã xác nhận, tiền mô phỏng)</p><p className="text-2xl font-extrabold text-primary">{formatVND(revenue)}</p></div>
+        <div className="card p-4"><p className="text-sm text-slate-500">Doanh thu (từ các đặt sân đã xác nhận)</p><p className="text-2xl font-extrabold text-primary">{formatVND(revenue)}</p></div>
         <div className="card p-4"><p className="text-sm text-slate-500">Tổng lượt đặt</p><p className="text-2xl font-extrabold">{bookings.length}</p></div>
         <div className="card p-4"><p className="text-sm text-slate-500">Chờ duyệt</p><p className="text-2xl font-extrabold text-accent">{pending.length}</p></div>
         <div className="card p-4"><p className="text-sm text-slate-500">Tỷ lệ lấp đầy ước tính</p><p className="text-2xl font-extrabold">{utilization}%</p></div>

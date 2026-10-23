@@ -58,7 +58,7 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
     <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
       <div className="space-y-6">
         <div className="flex h-56 items-end rounded-3xl bg-gradient-to-br from-primary via-secondary to-accent p-6">
-          <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-primary"><ShieldCheck className="mr-1 inline h-4 w-4" />Sân đã xác thực (dữ liệu demo hư cấu)</span>
+          <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-primary"><ShieldCheck className="mr-1 inline h-4 w-4" />Sân đã xác thực</span>
         </div>
         <div>
           <h1 className="text-3xl font-extrabold">{venue.name}</h1>
@@ -84,7 +84,7 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
                 className="mt-4 h-64 w-full rounded-2xl border"
                 loading="lazy"
               />
-              <p className="mt-1 text-xs text-slate-400">Bản đồ © OpenStreetMap contributors — vị trí demo gần đúng theo địa chỉ.</p>
+              <p className="mt-1 text-xs text-slate-400">Bản đồ © OpenStreetMap contributors — vị trí gần đúng theo địa chỉ.</p>
             </>
           )}
         </section>
@@ -98,11 +98,11 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
             <li>Trước {venue.cancelPartialBeforeHours} giờ: phí {venue.cancelPartialFeePercent}%</li>
             <li>Dưới {venue.cancelPartialBeforeHours} giờ: không hoàn</li>
           </ul>
-          <p className="mt-2 flex items-center gap-1 text-sm text-slate-500"><Clock className="h-4 w-4" /> Giờ mở cửa mẫu: {venue.hours[0] ? `${dayNames[venue.hours[0].dayOfWeek]} ${venue.hours[0].openTime}–${venue.hours[0].closeTime} (áp dụng cả tuần trong demo)` : "—"}</p>
+          <p className="mt-2 flex items-center gap-1 text-sm text-slate-500"><Clock className="h-4 w-4" /> Giờ mở cửa mẫu: {venue.hours[0] ? `${dayNames[venue.hours[0].dayOfWeek]} ${venue.hours[0].openTime}–${venue.hours[0].closeTime} (áp dụng cả tuần)` : "—"}</p>
           <p className="mt-1 text-sm">{venue.instantBooking ? "Đặt sân tức thì — xác nhận ngay khi giữ được slot." : "Sân yêu cầu chủ sân duyệt trước khi xác nhận."}</p>
         </section>
         <section className="card p-5">
-          <h2 className="mb-3 font-bold">Đánh giá {venue.reviews.some((r) => r.isSeed) && <span className="text-xs font-normal text-slate-400">(có đánh giá seed/demo được ghi rõ)</span>}</h2>
+          <h2 className="mb-3 font-bold">Đánh giá</h2>
           {venue.reviews.length === 0 ? <p className="text-slate-500">Chưa có đánh giá.</p> : venue.reviews.map((r) => (
             <div key={r.id} className="border-b py-2 last:border-0"><p><strong>{r.user.name}</strong> — {"★".repeat(r.rating)} {r.isSeed && <em className="text-xs text-slate-400">(seed)</em>}</p><p className="text-sm">{r.comment}</p></div>
           ))}

@@ -118,8 +118,8 @@ export async function createBooking(input: CreateBookingInput) {
     return created;
   });
 
-  await notify(input.userId, "BOOKING", status === "CONFIRMED" ? "Đặt sân thành công (thanh toán mô phỏng)" : "Đặt sân đang chờ duyệt",
-    `Mã ${booking.reference} — tổng ${booking.totalPrice.toLocaleString("vi-VN")} đ (thanh toán MÔ PHỎNG, chưa thu tiền thật).`,
+  await notify(input.userId, "BOOKING", status === "CONFIRMED" ? "Đặt sân thành công" : "Đặt sân đang chờ duyệt",
+    `Mã ${booking.reference} — tổng ${booking.totalPrice.toLocaleString("vi-VN")} đ.`,
     booking.id, `booking-created-${booking.id}`);
   if (status === "PENDING") {
     await notify(facility.venue.ownerId, "BOOKING_PENDING", "Có yêu cầu đặt sân mới", `Mã ${booking.reference} đang chờ bạn duyệt.`, booking.id, `booking-pending-${booking.id}`);
@@ -144,7 +144,7 @@ export async function transitionBooking(bookingId: string, toStatus: string, act
     }
     return u;
   });
-  await notify(booking.userId, "BOOKING", `Cập nhật đặt sân ${booking.reference}`, `Trạng thái mới: ${toStatus}${refundAmount !== undefined ? ` — hoàn mô phỏng: ${refundAmount.toLocaleString("vi-VN")} đ` : ""}`, booking.id, `booking-${booking.id}-${toStatus}-${Date.now()}`);
+  await notify(booking.userId, "BOOKING", `Cập nhật đặt sân ${booking.reference}`, `Trạng thái mới: ${toStatus}${refundAmount !== undefined ? ` — hoàn: ${refundAmount.toLocaleString("vi-VN")} đ` : ""}`, booking.id, `booking-${booking.id}-${toStatus}-${Date.now()}`);
   return updated;
 }
 

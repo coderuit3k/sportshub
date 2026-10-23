@@ -20,8 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="mt-12 bg-ink text-slate-300">
           <div className="mx-auto grid max-w-7xl gap-6 px-4 py-10 text-sm md:grid-cols-3">
             <div><p className="mb-2 text-base font-bold text-white">SportsHub Vietnam</p><p>Sports for Everyone. Find Your Place. Play Together.</p></div>
-            <div><p className="mb-2 font-bold text-white">Liên hệ</p><p>TP. Hồ Chí Minh, Việt Nam<br />hotro@sportshub.example (demo)</p></div>
-            <div><p className="mb-2 font-bold text-white">Chính sách</p><p>Thanh toán trên nền tảng hiện là MÔ PHỎNG — chưa thu tiền thật. Xem chính sách hủy ở từng sân.</p></div>
+            <div><p className="mb-2 font-bold text-white">Liên hệ</p><p>TP. Hồ Chí Minh, Việt Nam<br />hotro@sportshub.example</p></div>
+            <div><p className="mb-2 font-bold text-white">Chính sách</p><p>Thanh toán qua VietQR/MoMo hoặc tại quầy. Xem chính sách hủy ở từng sân.</p></div>
           </div>
         </footer>
       </body>

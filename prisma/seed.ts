@@ -60,13 +60,13 @@ async function main() {
     lat: number; lng: number;
   }
   const venueSeeds: VenueSeed[] = [
-    { slug: "smash-arena-thu-duc", name: "CLB Cầu Lông Smash Arena Thủ Đức (demo hư cấu)", district: "Thủ Đức", address: "123 Võ Văn Ngân, Thủ Đức (địa chỉ demo)", sportSlugs: ["cau-long"], venueType: "INDOOR", beginner: true, family: true, rating: 4.9, ratingCount: 128, instant: true, status: "APPROVED", desc: "12 sân chuẩn BWF, trần cao 11m, đèn LED 600 Lux chống chói. Dữ liệu demo hư cấu.", lat: 10.8503, lng: 106.7553 },
-    { slug: "pickle-hub-binh-thanh", name: "PickleHub Bình Thạnh (demo hư cấu)", district: "Bình Thạnh", address: "45 Điện Biên Phủ, Bình Thạnh (địa chỉ demo)", sportSlugs: ["pickleball"], venueType: "MIXED", beginner: true, family: true, rating: 4.7, ratingCount: 86, instant: true, status: "APPROVED", desc: "6 sân pickleball, có lớp cho người mới. Dữ liệu demo hư cấu.", lat: 10.8015, lng: 106.7100 },
-    { slug: "sai-gon-mini-football-q7", name: "Sân Bóng Mini Sài Gòn Quận 7 (demo hư cấu)", district: "Quận 7", address: "789 Nguyễn Thị Thập, Quận 7 (địa chỉ demo)", sportSlugs: ["bong-da-mini"], venueType: "OUTDOOR", beginner: false, family: true, rating: 4.6, ratingCount: 210, instant: false, status: "APPROVED", desc: "Sân cỏ nhân tạo 7 người, đèn đêm. Đặt sân cần chủ sân duyệt. Dữ liệu demo hư cấu.", lat: 10.7380, lng: 106.7130 },
-    { slug: "riverside-tennis-q1", name: "Riverside Tennis Quận 1 (demo hư cấu)", district: "Quận 1", address: "12 Tôn Đức Thắng, Quận 1 (địa chỉ demo)", sportSlugs: ["quan-vot"], venueType: "OUTDOOR", beginner: false, family: false, rating: 4.8, ratingCount: 64, instant: true, status: "APPROVED", desc: "4 sân tennis mặt cứng ven sông. Dữ liệu demo hư cấu.", lat: 10.7820, lng: 106.7060 },
-    { slug: "hoops-center-thu-duc", name: "Hoops Center Thủ Đức (demo hư cấu)", district: "Thủ Đức", address: "56 Kha Vạn Cân, Thủ Đức (địa chỉ demo)", sportSlugs: ["bong-ro"], venueType: "INDOOR", beginner: true, family: true, rating: 4.5, ratingCount: 52, instant: true, status: "APPROVED", desc: "Sân bóng rổ trong nhà sàn gỗ. Dữ liệu demo hư cấu.", lat: 10.8580, lng: 106.7470 },
-    { slug: "aqua-pool-q7", name: "Aqua Pool Quận 7 (demo hư cấu)", district: "Quận 7", address: "321 Huỳnh Tấn Phát, Quận 7 (địa chỉ demo)", sportSlugs: ["boi-loi"], venueType: "MIXED", beginner: true, family: true, rating: 4.6, ratingCount: 97, instant: true, status: "APPROVED", desc: "Hồ bơi 25m, 6 làn, có khu trẻ em. Dữ liệu demo hư cấu.", lat: 10.7250, lng: 106.7280 },
-    { slug: "new-court-pending-binh-thanh", name: "Sân Mới Chờ Duyệt Bình Thạnh (demo hư cấu)", district: "Bình Thạnh", address: "99 Xô Viết Nghệ Tĩnh, Bình Thạnh (địa chỉ demo)", sportSlugs: ["cau-long", "pickleball"], venueType: "INDOOR", beginner: true, family: false, rating: 0, ratingCount: 0, instant: true, status: "PENDING_APPROVAL", desc: "Cơ sở mới nộp hồ sơ, đang chờ admin duyệt. Dữ liệu demo hư cấu.", lat: 10.8050, lng: 106.7150 },
+    { slug: "smash-arena-thu-duc", name: "CLB Cầu Lông Smash Arena Thủ Đức", district: "Thủ Đức", address: "123 Võ Văn Ngân, Thủ Đức", sportSlugs: ["cau-long"], venueType: "INDOOR", beginner: true, family: true, rating: 4.9, ratingCount: 128, instant: true, status: "APPROVED", desc: "12 sân chuẩn BWF, trần cao 11m, đèn LED 600 Lux chống chói.", lat: 10.8503, lng: 106.7553 },
+    { slug: "pickle-hub-binh-thanh", name: "PickleHub Bình Thạnh", district: "Bình Thạnh", address: "45 Điện Biên Phủ, Bình Thạnh", sportSlugs: ["pickleball"], venueType: "MIXED", beginner: true, family: true, rating: 4.7, ratingCount: 86, instant: true, status: "APPROVED", desc: "6 sân pickleball, có lớp cho người mới.", lat: 10.8015, lng: 106.7100 },
+    { slug: "sai-gon-mini-football-q7", name: "Sân Bóng Mini Sài Gòn Quận 7", district: "Quận 7", address: "789 Nguyễn Thị Thập, Quận 7", sportSlugs: ["bong-da-mini"], venueType: "OUTDOOR", beginner: false, family: true, rating: 4.6, ratingCount: 210, instant: false, status: "APPROVED", desc: "Sân cỏ nhân tạo 7 người, đèn đêm. Đặt sân cần chủ sân duyệt.", lat: 10.7380, lng: 106.7130 },
+    { slug: "riverside-tennis-q1", name: "Riverside Tennis Quận 1", district: "Quận 1", address: "12 Tôn Đức Thắng, Quận 1", sportSlugs: ["quan-vot"], venueType: "OUTDOOR", beginner: false, family: false, rating: 4.8, ratingCount: 64, instant: true, status: "APPROVED", desc: "4 sân tennis mặt cứng ven sông.", lat: 10.7820, lng: 106.7060 },
+    { slug: "hoops-center-thu-duc", name: "Hoops Center Thủ Đức", district: "Thủ Đức", address: "56 Kha Vạn Cân, Thủ Đức", sportSlugs: ["bong-ro"], venueType: "INDOOR", beginner: true, family: true, rating: 4.5, ratingCount: 52, instant: true, status: "APPROVED", desc: "Sân bóng rổ trong nhà sàn gỗ.", lat: 10.8580, lng: 106.7470 },
+    { slug: "aqua-pool-q7", name: "Aqua Pool Quận 7", district: "Quận 7", address: "321 Huỳnh Tấn Phát, Quận 7", sportSlugs: ["boi-loi"], venueType: "MIXED", beginner: true, family: true, rating: 4.6, ratingCount: 97, instant: true, status: "APPROVED", desc: "Hồ bơi 25m, 6 làn, có khu trẻ em.", lat: 10.7250, lng: 106.7280 },
+    { slug: "new-court-pending-binh-thanh", name: "Sân Mới Chờ Duyệt Bình Thạnh", district: "Bình Thạnh", address: "99 Xô Viết Nghệ Tĩnh, Bình Thạnh", sportSlugs: ["cau-long", "pickleball"], venueType: "INDOOR", beginner: true, family: false, rating: 0, ratingCount: 0, instant: true, status: "PENDING_APPROVAL", desc: "Cơ sở mới nộp hồ sơ, đang chờ admin duyệt.", lat: 10.8050, lng: 106.7150 },
   ];
 
   const venueIds: Record<string, string> = {};
@@ -108,7 +108,7 @@ async function main() {
   }
 
   // Reviews (marked seed)
-  const reviewTexts = ["Sân đẹp, đèn sáng, đặt rất nhanh. (đánh giá seed/demo)", "Mặt sân tốt, nhân viên thân thiện. (đánh giá seed/demo)", "Giá hợp lý giờ thấp điểm. (đánh giá seed/demo)"];
+  const reviewTexts = ["Sân đẹp, đèn sáng, đặt rất nhanh.", "Mặt sân tốt, nhân viên thân thiện.", "Giá hợp lý giờ thấp điểm."];
   let ri = 0;
   for (const slug of ["smash-arena-thu-duc", "pickle-hub-binh-thanh", "sai-gon-mini-football-q7"]) {
     await prisma.review.create({ data: { userId: player.id, venueId: venueIds[slug], rating: 5 - (ri % 2), comment: reviewTexts[ri % reviewTexts.length], isSeed: true } });
@@ -129,13 +129,13 @@ async function main() {
         title: s.title, sportId: sports[s.sport], venueId: venueIds[s.venue], organizerId: player.id,
         startAt: s.start, endAt: new Date(s.start.getTime() + 2 * 3600_000), skillLevel: s.skill,
         maxParticipants: s.max, costPerPerson: s.cost, status: "OPEN",
-        description: "Kèo cộng đồng demo — chưa phải đặt sân đã xác nhận.",
+        description: "Kèo cộng đồng mở — tham gia tự do, chưa phải đặt sân đã xác nhận.",
       },
     });
     await prisma.sessionParticipant.create({ data: { sessionId: created.id, userId: player.id, status: "JOINED" } });
   }
 
-  await prisma.auditLog.create({ data: { actorId: admin.id, action: "SEED", entity: "System", details: "Seed dữ liệu demo hư cấu hoàn tất" } });
+  await prisma.auditLog.create({ data: { actorId: admin.id, action: "SEED", entity: "System", details: "Seed dữ liệu hoàn tất" } });
   console.log(`Seed done. Accounts: player/owner/admin @sportshub.local / Password123! — Venues: ${Object.keys(venueIds).length}`);
 }
 
