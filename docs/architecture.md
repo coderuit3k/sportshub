@@ -55,18 +55,40 @@ weekend price, rendered back as 14:00–15:00 in My Bookings).
 ## Venue photos
 
 Venue banners (cards on `/`, `/venues`, `/favorites`, and the detail-page
-hero) show a real photo of the venue's primary sport. The photos are a
-curated set of direct Unsplash CDN links (`images.unsplash.com`, allowlisted
-in `next.config.ts`), keyed by sport slug in `src/lib/venue-images.ts` —
-no API key, no runtime API calls, no DB column. Each URL was verified
-individually (HTTP 200 + image content type + visual subject check) before
-being added. `venueImage(sportSlug, venueSlug)` picks deterministically
-(stable hash of the venue slug), so different venues of one sport can show
-different photos while a given venue's photo never changes.
+hero) show a real photo of the venue's sport, resolved by
+`venueImage(sportSlug, venueSlug)` in `src/lib/venue-images.ts` — no API
+key, no runtime API calls, no DB column. Lookup order:
 
-Fallback: a sport with no verified photo yet (pickleball, bong-da-mini,
-boi-loi), a venue without a sport, or an image that fails to load renders
-the original gradient banner with the sport emoji instead — implemented in
-`src/components/VenueImage.tsx`, so a frame never renders broken or empty.
-To add a sport, verify a photo the same way and add its URL to the map; no
-other change is needed.
+1. **Per-venue photo from a real facility website** (`VENUE_PHOTOS`,
+   keyed by venue slug). Each seed venue's photo was sourced from a real
+   Vietnamese sports-facility website of the same sport — the operator's
+   own site wherever one exists — and verified individually before being
+   added: HTTP 200 + image content type with this site sent as `Referer`
+   (hotlinking must actually work), the response body is a real image,
+   and a visual check confirmed a wide shot of the actual court / hall /
+   pool (no equipment close-ups, portraits, text-heavy banners or logos).
+   Sources: Smash Arena Thủ Đức and the pending Bình Thạnh venue —
+   Quốc Việt Badminton (`qvbadminton.com`, their own HCMC badminton
+   halls); PickleHub Bình Thạnh — CLB Pickleball Trung Đoàn Gia Định
+   (`pickleballtrungdoangiadinh.com`, the club's own site, HTTP-only);
+   Hoops Center Thủ Đức — 29 Ballers (`29ballers.com`, served from their
+   Supabase storage); Aqua Pool Quận 7 — Tôn Đức Thắng University
+   (`international.tdtu.edu.vn`; the university's own Quận 7 pool is
+   25 m × 13.5 m with 6 lanes, the same spec as the seed venue).
+2. **Sport-level stock fallback** (`VENUE_IMAGES`, Unsplash / Pexels CDN
+   links, verified the same way), picked deterministically by hashing
+   the venue slug. Two venues currently resolve here because no usable
+   real-site photo could be verified for them: Sài Gòn Mini Football Q7
+   (candidate operators' own sites served only stock ball close-ups and
+   marketing banners) and Riverside Tennis Q1 (the candidate club site
+   served only stock portraits and text-heavy banners). To upgrade one,
+   verify a real facility photo the same way and add it to
+   `VENUE_PHOTOS`.
+
+Every host used above is allowlisted in `next.config.ts`
+(`images.remotePatterns`). Fallback: a venue with no photo at either
+level, or an image that fails to load, renders the original gradient
+banner with the sport emoji instead — implemented in
+`src/components/VenueImage.tsx`, so a frame never renders broken or
+empty. The pixel-level guard is `tests/e2e/venue-images.spec.ts`: every
+card and hero must render with `naturalWidth > 0` and a real height.

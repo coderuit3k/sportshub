@@ -1,16 +1,62 @@
 /**
- * Curated venue photos, keyed by sport slug.
+ * Venue photos.
  *
- * Sources: Unsplash and Pexels, served as direct CDN links
- * (images.unsplash.com / images.pexels.com) — hand-picked and verified one
- * by one (HTTP 200 + image content type on the exact URL below, and a
- * visual check that the photo actually shows the sport's venue). No API
- * key, no runtime API calls, no DB column: the same pattern as SportIcon's
- * slug-keyed emoji map, so it works for venues seeded before this map
- * existed and needs no re-seed.
+ * Primary strategy: one photo per seed venue, sourced from a REAL
+ * Vietnamese sports-facility website of the same sport (the venue
+ * operator's own site wherever one exists) — see VENUE_PHOTOS below, each
+ * entry names its source website. Every URL was verified individually:
+ * HTTP 200 + image content type with our own site sent as Referer
+ * (hotlinking must work), the downloaded bytes are a real image, and a
+ * visual check confirmed the photo shows that sport's actual court /
+ * hall / pool in a wide shot (no equipment close-ups, portraits,
+ * text-heavy banners or logos).
  *
- * Every sport now has two verified photos; callers fall back to the
- * gradient + sport-emoji banner only for unknown slugs (see VenueImage).
+ * Fallback: venues without a per-venue photo use the sport-level stock
+ * map (Unsplash / Pexels CDN links, verified the same way), picked
+ * deterministically by hashing the venue slug; unknown sports return
+ * null and VenueImage renders the gradient + sport-emoji banner.
+ * No API key, no runtime API calls, no DB column.
+ */
+const VENUE_PHOTOS: Record<string, string> = {
+  // Smash Arena Thủ Đức (badminton, indoor) — Quốc Việt Badminton
+  // (qvbadminton.com): wide shot of their own indoor badminton hall in
+  // HCMC, green courts in play.
+  "smash-arena-thu-duc":
+    "https://qvbadminton.com/wp-content/uploads/2024/12/khong-gian-san-cau-long-quoc-viet-badminton-quan-7.jpg",
+  // PickleHub Bình Thạnh (pickleball) — CLB Pickleball Trung Đoàn Gia
+  // Định (pickleballtrungdoangiadinh.com, the club's own site): match
+  // action at the net on their blue indoor court. (HTTP-only host.)
+  "pickle-hub-binh-thanh":
+    "http://pickleballtrungdoangiadinh.com/upload/news/pk1-1774757208.webp",
+  // Hoops Center Thủ Đức (basketball, indoor wooden floor) — 29 Ballers
+  // (29ballers.com, a basketball-court booking site; image served from
+  // their Supabase storage): empty indoor wooden basketball court.
+  "hoops-center-thu-duc":
+    "https://mdfajydtdhiuflrkruft.supabase.co/storage/v1/object/public/branches/29/d96072c8-e38b-41c9-83eb-ba697114fc43.jpg",
+  // Aqua Pool Quận 7 (swimming) — Tôn Đức Thắng University, Quận 7
+  // (international.tdtu.edu.vn): the university's own outdoor pool —
+  // 25 m × 13.5 m with 6 lanes per TDTU's facility page, the same spec
+  // as this seed venue.
+  "aqua-pool-q7":
+    "https://international.tdtu.edu.vn/sites/international/files/International/Support/Ho-boi.jpg",
+  // New Court Pending Bình Thạnh (badminton + pickleball, indoor) —
+  // Quốc Việt Badminton (qvbadminton.com, a badminton & pickleball
+  // operator): their empty indoor hall with nets up. The hall's own
+  // wall signage is visible, as on any real venue photo.
+  "new-court-pending-binh-thanh":
+    "https://qvbadminton.com/wp-content/uploads/2024/12/san-cau-long-quoc-viet-quan-7.jpg",
+  // No per-venue photo for sai-gon-mini-football-q7 or
+  // riverside-tennis-q1: no usable wide shot of a real facility could
+  // be verified on a Vietnamese operator's own website (the candidate
+  // sites served only stock close-ups, player portraits or text-heavy
+  // marketing banners), so both fall through to the sport-level stock
+  // map below — see docs/architecture.md, "Venue photos".
+};
+
+/**
+ * Sport-level stock fallback (Unsplash / Pexels CDN links), keyed by
+ * sport slug. Two verified photos per sport; the venue slug hash picks
+ * one deterministically.
  */
 const VENUE_IMAGES: Record<string, string[]> = {
   // Cầu lông — shuttlecock in flight, close-up against a dark court
@@ -60,15 +106,17 @@ function stableHash(text: string): number {
 }
 
 /**
- * Photo URL for a venue, chosen deterministically from its primary sport's
- * photos by hashing the venue slug (different venues of the same sport can
- * show different photos; a given venue's photo never changes between loads).
- * Returns null when the sport is unknown or has no verified photo.
+ * Photo URL for a venue: the per-venue real-facility photo when one is
+ * mapped, otherwise a deterministic pick from the primary sport's stock
+ * photos (stable hash of the venue slug, so a given venue's photo never
+ * changes between loads). Returns null when neither applies.
  */
 export function venueImage(
   primarySportSlug: string | null | undefined,
   venueSlug: string,
 ): string | null {
+  const perVenue = VENUE_PHOTOS[venueSlug];
+  if (perVenue) return perVenue;
   if (!primarySportSlug) return null;
   const urls = VENUE_IMAGES[primarySportSlug];
   if (!urls || urls.length === 0) return null;
