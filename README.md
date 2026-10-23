@@ -7,8 +7,8 @@ Production-oriented MVP built from the SportsHub master prompt. Original product
 ## Stack (with documented environment trade-offs)
 
 - Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind CSS 3
-- Prisma ORM. **Local dev: SQLite** (`DATABASE_URL="file:./dev.db"`) because this VM has no PostgreSQL/Docker.
-  Production schema ships as `prisma/schema.postgresql.prisma` — see `docs/database.md`.
+- Prisma ORM. **Local dev: SQLite** (`DATABASE_URL="file:./dev.db"`) because this VM originally had no PostgreSQL/Docker.
+  Production schema ships as `prisma/schema.postgresql.prisma` — **PostgreSQL path verified end-to-end on 2026-10-23 (PostgreSQL 16.15: db push, exclusion constraint, seed, app smoke test)**, see `docs/database.md`.
 - Auth: bcryptjs + `jose` JWT in an httpOnly cookie (Auth.js-equivalent choice, see `docs/security.md`). RBAC: `PLAYER` / `OWNER` / `ADMIN`.
 - Design tokens from the Stitch project: primary `#0F5132`, secondary `#10B981`, accent `#F59E0B`, neutral `#0F172A`; fonts Plus Jakarta Sans + Inter.
 - UI language: Vietnamese. Currency VND, display timezone Asia/Ho_Chi_Minh.
