@@ -15,9 +15,12 @@
  *    only rows that actually change are updated — a no-op once scrubbed.
  * 5. Tops the venue catalog up to the generated catalog
  *    (prisma/venue-catalog.ts — 29 extra venues per sport, 30 APPROVED
- *    per sport in total): inserts only venues whose slug is missing,
- *    never modifies existing rows. NOT gated on user count — it runs on
- *    every build and is a no-op once the catalog is complete.
+ *    per sport in total): inserts only venues whose slug is missing and
+ *    repairs incomplete rows left by interrupted runs. NOT gated on
+ *    user count — it runs on every build and is a no-op once the
+ *    catalog is complete. If any venue fails or is still missing at the
+ *    end, ensureVenueCatalog throws, this script exits 1 and the build
+ *    fails — a partial catalog must never ship silently.
  *
  * Uses DATABASE_URL from the environment; the build command points it at
  * DATABASE_URL_UNPOOLED for DDL reliability (Neon pooled endpoints are not
@@ -166,7 +169,10 @@ async function main(): Promise<void> {
   await backfillVenueCoordinates();
   await scrubDemoWording();
   const catalog = await ensureVenueCatalog(prisma);
-  console.log(`[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present`);
+  console.log(
+    `[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present, ` +
+      `${catalog.repaired} repaired, ${catalog.failed} failed`,
+  );
 }
 
 // Guarded so local verification harnesses can import scrubDemoWording
