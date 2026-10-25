@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
-import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 /**
- * Sliding-window rate limiting with two interchangeable backends behind one
- * async surface (`check` / `record` / `consume` / `reset`):
+ * Rate limiting with two interchangeable backends behind one async
+ * surface (`check` / `record` / `consume` / `reset`):
  *
  * - **Upstash** (shared, global) — used when `KV_REST_API_URL` and
  *   `KV_REST_API_TOKEN` are set (the names injected by the Vercel
  *   Marketplace Upstash/Redis integration; Vercel KV speaks the Upstash
- *   REST protocol, so `@upstash/redis` talks to it directly). Counters live
- *   in Redis, so the quota is enforced across every serverless instance.
- *   Backed by `@upstash/ratelimit`'s sliding-window algorithm.
+ *   REST protocol, so `@upstash/redis` talks to it directly). Counters
+ *   live in Redis, so the quota is enforced across every serverless
+ *   instance. Implemented as direct fixed-window counters on
+ *   `@upstash/redis` commands — one key per limiter+subject,
+ *   `rl:{prefix}:{key}`: `INCR` (+ `PEXPIRE` on the first hit) counts,
+ *   `GET` peeks, `PTTL` sizes the retry delay, `DEL` resets.
  * - **In-memory** (fallback) — the original per-instance `SlidingWindowLimiter`
  *   (module-level Map). Used for local dev and until the Upstash env vars are
  *   provisioned. Honest limitation: on serverless each warm instance keeps its
@@ -19,9 +21,16 @@ import { Redis } from "@upstash/redis";
  *   `limit × concurrent instances` — a best-effort brake, not a hard quota.
  *   A one-time warning is logged when this fallback is active in production.
  *
- * If an Upstash call itself fails (network/outage), that call degrades to the
- * in-memory backend rather than failing the request: login/signup/booking
- * stay available and still get per-instance braking.
+ * Semantics delta between backends: the Redis counters are FIXED windows
+ * anchored at the first attempt in the window; the in-memory limiter is an
+ * exact sliding log. Quotas are identical either way.
+ *
+ * If a Redis call itself fails (network/outage), the error is logged
+ * (`console.error`) and that call degrades to the in-memory backend rather
+ * than failing the request: login/signup/booking stay available and still
+ * get per-instance braking. The degradation is observable via
+ * `SharedRateLimiter.diagnostics()` — silent failure is not acceptable
+ * for a security control.
  */
 
 export interface RateLimitDecision {
@@ -157,34 +166,39 @@ class MemoryRateLimitBackend implements RateLimitBackend {
   }
 }
 
-/** `@upstash/ratelimit` Duration string for a millisecond window. */
-function toUpstashWindow(windowMs: number): string {
-  if (windowMs % 3_600_000 === 0) return `${windowMs / 3_600_000} h`;
-  if (windowMs % 60_000 === 0) return `${windowMs / 60_000} m`;
-  if (windowMs % 1_000 === 0) return `${windowMs / 1_000} s`;
-  return `${windowMs} ms`;
-}
-
-function decisionFromReset(remaining: number, resetEpochMs: number): RateLimitDecision {
-  if (remaining > 0) return { allowed: true, remaining, retryAfterSeconds: 0 };
-  const retryAfterSeconds = Math.max(1, Math.ceil((resetEpochMs - Date.now()) / 1000));
-  return { allowed: false, remaining: 0, retryAfterSeconds };
+/** Coerce a Redis GET result (number, numeric string, or null) to a count. */
+function toCount(raw: number | string | null | undefined): number {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0;
+  if (typeof raw === "string") {
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
 }
 
 /**
- * Upstash backend. Semantics mapping onto `@upstash/ratelimit`:
- * - `check`  → `getRemaining()` (a true peek — consumes nothing).
- * - `record` → `limit()` with the decision discarded (counts one attempt).
- * - `consume`→ `limit()`.
- * - `reset`  → `resetUsedTokens()`.
- * Delta vs the in-memory limiter: Upstash's sliding window is a weighted
- * two-bucket approximation rather than an exact timestamp log, so counts
- * near a window boundary can differ by a small margin; quotas are the same.
- * Any Upstash error degrades that call to the in-memory fallback.
+ * Upstash backend: direct fixed-window counters via `@upstash/redis`.
+ *
+ * One Redis key per limiter+subject: `rl:{prefix}:{key}`.
+ * - `record`  → `INCR`; when the count is 1 (first hit of a window),
+ *   `PEXPIRE` the key to `windowMs`, anchoring the fixed window.
+ * - `check`   → `GET` the counter (missing = 0) WITHOUT counting; when
+ *   denied, `PTTL` sizes `retryAfterSeconds` (falling back to the full
+ *   window when PTTL is -1/-2).
+ * - `consume` → `INCR` first, then decide from the new count
+ *   (`allowed = count <= limit`), so concurrent consumers cannot
+ *   overshoot the quota the way a check-then-record pair could.
+ * - `reset`   → `DEL` the counter.
+ *
+ * Any Redis error is logged and degrades THAT call to the in-memory
+ * fallback; `degradedLastCall` records whether the most recent call had
+ * to degrade, so the facade can surface it (see `diagnostics()`).
  */
 class UpstashRateLimitBackend implements RateLimitBackend {
-  private ratelimit: Ratelimit | null = null;
+  private redis: Redis | null = null;
   private readonly fallback: MemoryRateLimitBackend;
+  /** True when the most recent call degraded to memory after a Redis error. */
+  degradedLastCall = false;
 
   constructor(
     private readonly limit: number,
@@ -196,50 +210,82 @@ class UpstashRateLimitBackend implements RateLimitBackend {
     this.fallback = new MemoryRateLimitBackend(limit, windowMs);
   }
 
-  private get client(): Ratelimit {
-    if (!this.ratelimit) {
-      this.ratelimit = new Ratelimit({
-        redis: new Redis({ url: this.url, token: this.token }),
-        limiter: Ratelimit.slidingWindow(this.limit, toUpstashWindow(this.windowMs) as Parameters<typeof Ratelimit.slidingWindow>[1]),
-        prefix: this.prefix,
-        analytics: false,
-        timeout: 2_000,
-      });
+  private get client(): Redis {
+    if (!this.redis) {
+      this.redis = new Redis({ url: this.url, token: this.token });
     }
-    return this.ratelimit;
+    return this.redis;
+  }
+
+  private redisKey(key: string): string {
+    return `rl:${this.prefix}:${key}`;
+  }
+
+  /** Seconds to wait from a PTTL value; -1/-2 (no expiry / no key) → full window. */
+  private retryAfterSeconds(pttl: number): number {
+    if (pttl > 0) return Math.max(1, Math.ceil(pttl / 1000));
+    return Math.max(1, Math.ceil(this.windowMs / 1000));
+  }
+
+  private markDegraded(err: unknown): void {
+    // Message only — never log credentials or request config.
+    console.error("[rate-limit] redis error", err instanceof Error ? err.message : String(err));
+    this.degradedLastCall = true;
   }
 
   async check(key: string): Promise<RateLimitDecision> {
     try {
-      const { remaining, reset } = await this.client.getRemaining(key);
-      return decisionFromReset(remaining, reset);
-    } catch {
+      const rk = this.redisKey(key);
+      const count = toCount(await this.client.get<number | string>(rk));
+      if (count < this.limit) {
+        this.degradedLastCall = false;
+        return { allowed: true, remaining: this.limit - count, retryAfterSeconds: 0 };
+      }
+      const pttl = await this.client.pttl(rk);
+      this.degradedLastCall = false;
+      return { allowed: false, remaining: 0, retryAfterSeconds: this.retryAfterSeconds(pttl) };
+    } catch (err) {
+      this.markDegraded(err);
       return this.fallback.check(key);
     }
   }
 
   async record(key: string): Promise<void> {
     try {
-      await this.client.limit(key);
-    } catch {
+      const rk = this.redisKey(key);
+      const count = await this.client.incr(rk);
+      if (count === 1) await this.client.pexpire(rk, this.windowMs);
+      this.degradedLastCall = false;
+    } catch (err) {
+      this.markDegraded(err);
       await this.fallback.record(key);
     }
   }
 
   async consume(key: string): Promise<RateLimitDecision> {
     try {
-      const res = await this.client.limit(key);
-      if (res.success) return { allowed: true, remaining: res.remaining, retryAfterSeconds: 0 };
-      return decisionFromReset(0, res.reset);
-    } catch {
+      const rk = this.redisKey(key);
+      const count = await this.client.incr(rk);
+      if (count === 1) await this.client.pexpire(rk, this.windowMs);
+      if (count <= this.limit) {
+        this.degradedLastCall = false;
+        return { allowed: true, remaining: this.limit - count, retryAfterSeconds: 0 };
+      }
+      const pttl = await this.client.pttl(rk);
+      this.degradedLastCall = false;
+      return { allowed: false, remaining: 0, retryAfterSeconds: this.retryAfterSeconds(pttl) };
+    } catch (err) {
+      this.markDegraded(err);
       return this.fallback.consume(key);
     }
   }
 
   async reset(key: string): Promise<void> {
     try {
-      await this.client.resetUsedTokens(key);
-    } catch {
+      await this.client.del(this.redisKey(key));
+      this.degradedLastCall = false;
+    } catch (err) {
+      this.markDegraded(err);
       await this.fallback.reset(key);
     }
   }
@@ -256,6 +302,18 @@ export interface RateLimiterConfig {
   windowMs: number;
   /** Key prefix isolating this limiter's counters in the shared store. */
   prefix: string;
+}
+
+/** Observable backend state for one limiter (see `SharedRateLimiter.diagnostics`). */
+export interface RateLimitDiagnostics {
+  /** Backend chosen from the environment: shared Redis, or per-instance memory. */
+  configured: RateLimitBackendKind;
+  /**
+   * True when the most recent call had to degrade to the in-memory
+   * fallback because Redis errored. Always false for a memory-configured
+   * limiter and before the first call.
+   */
+  degradedLastCall: boolean;
 }
 
 let warnedAboutMemoryFallback = false;
@@ -277,6 +335,21 @@ export class SharedRateLimiter implements RateLimitBackend {
   /** Which backend this limiter will use (decided from env; exposed for tests/diagnostics). */
   get backendKind(): RateLimitBackendKind {
     return rateLimitBackendKind(this.env);
+  }
+
+  /**
+   * Backend state WITHOUT forcing backend construction: which backend the
+   * environment selects, and whether the most recent call degraded to
+   * memory after a Redis error.
+   */
+  diagnostics(): RateLimitDiagnostics {
+    const configured = rateLimitBackendKind(this.env);
+    if (configured === "memory") return { configured, degradedLastCall: false };
+    const backend = this.backend;
+    return {
+      configured,
+      degradedLastCall: backend instanceof UpstashRateLimitBackend ? backend.degradedLastCall : false,
+    };
   }
 
   private get resolved(): RateLimitBackend {
@@ -326,6 +399,29 @@ export class SharedRateLimiter implements RateLimitBackend {
 
 export function createRateLimiter(config: RateLimiterConfig, env?: NodeJS.ProcessEnv): SharedRateLimiter {
   return new SharedRateLimiter(config, env);
+}
+
+/**
+ * TEMP-DIAGNOSTIC: remove after production verification.
+ * Headers exposing which backend served a rate-limit gate and what the
+ * gate decided, so the Redis path can be proven live from the outside
+ * (response inspection) instead of by inference:
+ * - `X-RateLimit-Backend`: `upstash` | `memory` | `upstash-degraded`
+ *   (the last when the gate's most recent Redis call errored and the
+ *   in-memory fallback answered).
+ * - `X-RateLimit-Remaining`: the gate decision's remaining count.
+ * Routes merge these into their gated responses (429 + rejections).
+ */
+export function rateLimitHeaders(
+  limiter: SharedRateLimiter,
+  decision: RateLimitDecision,
+): Record<string, string> {
+  const { configured, degradedLastCall } = limiter.diagnostics();
+  return {
+    "X-RateLimit-Backend":
+      configured === "memory" ? "memory" : degradedLastCall ? "upstash-degraded" : "upstash",
+    "X-RateLimit-Remaining": String(decision.remaining),
+  };
 }
 
 /**

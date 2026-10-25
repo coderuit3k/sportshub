@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { createBooking } from "@/services/bookings";
-import { bookingLimiter, tooManyRequests } from "@/lib/rate-limit";
+import { bookingLimiter, rateLimitHeaders, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({
   facilityId: z.string().min(1),
@@ -14,9 +14,19 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
   const gate = await bookingLimiter.consume(`booking:${user.id}`);
-  if (!gate.allowed) return tooManyRequests(gate);
+  if (!gate.allowed) {
+    // TEMP-DIAGNOSTIC: rate-limit headers, remove after production verification.
+    const res = tooManyRequests(gate);
+    for (const [k, v] of Object.entries(rateLimitHeaders(bookingLimiter, gate))) res.headers.set(k, v);
+    return res;
+  }
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: "Dữ liệu không hợp lệ" },
+      // TEMP-DIAGNOSTIC: rate-limit headers, remove after production verification.
+      { status: 400, headers: rateLimitHeaders(bookingLimiter, gate) },
+    );
   try {
     const { booking, created } = await createBooking({
       userId: user.id, facilityId: parsed.data.facilityId,
@@ -35,6 +45,10 @@ export async function POST(req: Request) {
       FACILITY_NOT_FOUND: ["Không tìm thấy sân con", 404],
     };
     const [text, status] = map[msg] ?? ["Không tạo được đặt sân", 500];
-    return NextResponse.json({ error: text, code: msg }, { status });
+    return NextResponse.json(
+      { error: text, code: msg },
+      // TEMP-DIAGNOSTIC: rate-limit headers, remove after production verification.
+      { status, headers: rateLimitHeaders(bookingLimiter, gate) },
+    );
   }
 }

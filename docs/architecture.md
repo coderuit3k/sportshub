@@ -249,19 +249,37 @@ backends, chosen per limiter at first use:
 - **Upstash (shared/global)** when `KV_REST_API_URL` and
   `KV_REST_API_TOKEN` are set — the variable names injected by the
   Vercel Marketplace Upstash/Redis integration (Vercel KV speaks the
-  Upstash REST protocol, so `@upstash/redis` connects directly):
-  `@upstash/ratelimit`
-  sliding-window counters in Redis, enforced across all instances.
-  Semantics map 1:1 (`check` → `getRemaining()` peek, `record` →
-  `limit()`, `reset` → `resetUsedTokens()`). One delta: Upstash's
-  sliding window is a weighted two-bucket approximation, not the exact
-  timestamp log of the in-memory limiter, so counts right at a window
-  boundary can differ slightly. If an Upstash call errors, that call
-  degrades to the in-memory backend instead of failing the request.
+  Upstash REST protocol, so `@upstash/redis` connects directly).
+  Implemented as direct fixed-window counters on raw Redis commands —
+  one key per limiter+subject, `rl:{prefix}:{key}`: `record` is `INCR`
+  (+ `PEXPIRE` to the window on the first hit, anchoring the window),
+  `check` is a `GET` peek (with `PTTL` sizing the retry delay when
+  denied), `consume` is `INCR`-first so concurrent consumers cannot
+  overshoot the quota, `reset` is `DEL`. Delta vs the in-memory
+  limiter: the Redis window is FIXED (anchored at the first attempt)
+  rather than an exact sliding log; quotas are the same. (An earlier
+  iteration delegated counting to `@upstash/ratelimit`'s sliding
+  window; it was removed after production probes showed the limiters
+  never blocking — every Redis error was swallowed by bare `catch {}`
+  blocks and silently degraded to per-instance memory, leaving no
+  observable signal. The direct-counter implementation logs every
+  Redis error and exposes its state instead — see below.)
 - **In-memory (fallback)** otherwise: the original per-instance
   limiter — fine for local dev; on serverless the effective limit is
   roughly `limit × instances`. A one-time warning is logged when this
   fallback is active with `NODE_ENV=production`.
+
+**Failure observability.** If a Redis call errors, the error is logged
+(`console.error("[rate-limit] redis error", …)`, message only) and
+that call degrades to the in-memory backend instead of failing the
+request — availability over strictness, but never silently. Each
+limiter exposes `diagnostics()` → `{ configured, degradedLastCall }`,
+and — TEMPORARY, to be removed after production verification — the
+login, register, and booking-create routes attach
+`X-RateLimit-Backend` (`upstash` | `memory` | `upstash-degraded`) and
+`X-RateLimit-Remaining` headers to their gated responses (429s and
+the rejections returned after the gate), so the live backend can be
+proven from response inspection alone.
 
 Quotas (unchanged): login 10 **failed** attempts / 10 min per IP+email
 (reset on success), register 5 / hour per IP, booking 30 / 10 min
