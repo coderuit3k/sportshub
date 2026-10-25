@@ -1,18 +1,25 @@
 import { NextResponse } from "next/server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 /**
- * Dependency-free sliding-window rate limiter.
+ * Sliding-window rate limiting with two interchangeable backends behind one
+ * async surface (`check` / `record` / `consume` / `reset`):
  *
- * Design notes (honest limitations):
- * - State lives in a module-level Map, i.e. PER SERVER INSTANCE. On serverless
- *   (Vercel) each warm instance keeps its own counters, so the effective global
- *   limit is roughly `limit × number of concurrent instances`. This is a
- *   best-effort brake against credential stuffing / signup spam, not a hard
- *   global quota.
- * - The core (`SlidingWindowLimiter`) is pure and clock-injectable so it is
- *   unit-testable and so the storage can later be swapped for a shared store
- *   (Upstash Redis / Vercel KV) behind the same check/record/reset surface
- *   without touching route handlers.
+ * - **Upstash** (shared, global) — used when `UPSTASH_REDIS_REST_URL` and
+ *   `UPSTASH_REDIS_REST_TOKEN` are set. Counters live in Redis, so the quota
+ *   is enforced across every serverless instance. Backed by
+ *   `@upstash/ratelimit`'s sliding-window algorithm.
+ * - **In-memory** (fallback) — the original per-instance `SlidingWindowLimiter`
+ *   (module-level Map). Used for local dev and until the Upstash env vars are
+ *   provisioned. Honest limitation: on serverless each warm instance keeps its
+ *   own counters, so the effective global limit is roughly
+ *   `limit × concurrent instances` — a best-effort brake, not a hard quota.
+ *   A one-time warning is logged when this fallback is active in production.
+ *
+ * If an Upstash call itself fails (network/outage), that call degrades to the
+ * in-memory backend rather than failing the request: login/signup/booking
+ * stay available and still get per-instance braking.
  */
 
 export interface RateLimitDecision {
@@ -97,9 +104,211 @@ export function tooManyRequests(decision: RateLimitDecision): NextResponse {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Backends                                                            */
+/* ------------------------------------------------------------------ */
+
+export type RateLimitBackendKind = "memory" | "upstash";
+
+/** Backend selection: Upstash only when BOTH REST env vars are present. */
+export function rateLimitBackendKind(env: NodeJS.ProcessEnv = process.env): RateLimitBackendKind {
+  return env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN ? "upstash" : "memory";
+}
+
+interface RateLimitBackend {
+  check(key: string): Promise<RateLimitDecision>;
+  record(key: string): Promise<void>;
+  consume(key: string): Promise<RateLimitDecision>;
+  reset(key: string): Promise<void>;
+}
+
+/** In-memory backend: exact original semantics via `SlidingWindowLimiter`. */
+class MemoryRateLimitBackend implements RateLimitBackend {
+  private readonly inner: SlidingWindowLimiter;
+  constructor(limit: number, windowMs: number) {
+    this.inner = new SlidingWindowLimiter(limit, windowMs);
+  }
+  async check(key: string): Promise<RateLimitDecision> {
+    return this.inner.check(key);
+  }
+  async record(key: string): Promise<void> {
+    this.inner.record(key);
+  }
+  async consume(key: string): Promise<RateLimitDecision> {
+    return this.inner.consume(key);
+  }
+  async reset(key: string): Promise<void> {
+    this.inner.reset(key);
+  }
+}
+
+/** `@upstash/ratelimit` Duration string for a millisecond window. */
+function toUpstashWindow(windowMs: number): string {
+  if (windowMs % 3_600_000 === 0) return `${windowMs / 3_600_000} h`;
+  if (windowMs % 60_000 === 0) return `${windowMs / 60_000} m`;
+  if (windowMs % 1_000 === 0) return `${windowMs / 1_000} s`;
+  return `${windowMs} ms`;
+}
+
+function decisionFromReset(remaining: number, resetEpochMs: number): RateLimitDecision {
+  if (remaining > 0) return { allowed: true, remaining, retryAfterSeconds: 0 };
+  const retryAfterSeconds = Math.max(1, Math.ceil((resetEpochMs - Date.now()) / 1000));
+  return { allowed: false, remaining: 0, retryAfterSeconds };
+}
+
 /**
- * Shared per-instance limiters (module singletons so counters survive across
- * requests handled by the same warm instance).
+ * Upstash backend. Semantics mapping onto `@upstash/ratelimit`:
+ * - `check`  → `getRemaining()` (a true peek — consumes nothing).
+ * - `record` → `limit()` with the decision discarded (counts one attempt).
+ * - `consume`→ `limit()`.
+ * - `reset`  → `resetUsedTokens()`.
+ * Delta vs the in-memory limiter: Upstash's sliding window is a weighted
+ * two-bucket approximation rather than an exact timestamp log, so counts
+ * near a window boundary can differ by a small margin; quotas are the same.
+ * Any Upstash error degrades that call to the in-memory fallback.
+ */
+class UpstashRateLimitBackend implements RateLimitBackend {
+  private ratelimit: Ratelimit | null = null;
+  private readonly fallback: MemoryRateLimitBackend;
+
+  constructor(
+    private readonly limit: number,
+    private readonly windowMs: number,
+    private readonly prefix: string,
+    private readonly url: string,
+    private readonly token: string,
+  ) {
+    this.fallback = new MemoryRateLimitBackend(limit, windowMs);
+  }
+
+  private get client(): Ratelimit {
+    if (!this.ratelimit) {
+      this.ratelimit = new Ratelimit({
+        redis: new Redis({ url: this.url, token: this.token }),
+        limiter: Ratelimit.slidingWindow(this.limit, toUpstashWindow(this.windowMs) as Parameters<typeof Ratelimit.slidingWindow>[1]),
+        prefix: this.prefix,
+        analytics: false,
+        timeout: 2_000,
+      });
+    }
+    return this.ratelimit;
+  }
+
+  async check(key: string): Promise<RateLimitDecision> {
+    try {
+      const { remaining, reset } = await this.client.getRemaining(key);
+      return decisionFromReset(remaining, reset);
+    } catch {
+      return this.fallback.check(key);
+    }
+  }
+
+  async record(key: string): Promise<void> {
+    try {
+      await this.client.limit(key);
+    } catch {
+      await this.fallback.record(key);
+    }
+  }
+
+  async consume(key: string): Promise<RateLimitDecision> {
+    try {
+      const res = await this.client.limit(key);
+      if (res.success) return { allowed: true, remaining: res.remaining, retryAfterSeconds: 0 };
+      return decisionFromReset(0, res.reset);
+    } catch {
+      return this.fallback.consume(key);
+    }
+  }
+
+  async reset(key: string): Promise<void> {
+    try {
+      await this.client.resetUsedTokens(key);
+    } catch {
+      await this.fallback.reset(key);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Facade + shared limiters                                            */
+/* ------------------------------------------------------------------ */
+
+export interface RateLimiterConfig {
+  /** Max attempts allowed inside the window. */
+  limit: number;
+  /** Window length in milliseconds. */
+  windowMs: number;
+  /** Key prefix isolating this limiter's counters in the shared store. */
+  prefix: string;
+}
+
+let warnedAboutMemoryFallback = false;
+
+/**
+ * A rate limiter with async `check` / `record` / `consume` / `reset`.
+ * The backend is chosen lazily on first use from the environment
+ * (Upstash when configured, in-memory otherwise — see file header).
+ */
+export class SharedRateLimiter implements RateLimitBackend {
+  private backend: RateLimitBackend | null = null;
+
+  constructor(
+    private readonly config: RateLimiterConfig,
+    private readonly env: NodeJS.ProcessEnv = process.env,
+  ) {}
+
+  /** Which backend this limiter will use (decided from env; exposed for tests/diagnostics). */
+  get backendKind(): RateLimitBackendKind {
+    return rateLimitBackendKind(this.env);
+  }
+
+  private get resolved(): RateLimitBackend {
+    if (!this.backend) {
+      if (this.backendKind === "upstash") {
+        this.backend = new UpstashRateLimitBackend(
+          this.config.limit,
+          this.config.windowMs,
+          this.config.prefix,
+          this.env.UPSTASH_REDIS_REST_URL!,
+          this.env.UPSTASH_REDIS_REST_TOKEN!,
+        );
+      } else {
+        if (this.env.NODE_ENV === "production" && !warnedAboutMemoryFallback) {
+          warnedAboutMemoryFallback = true;
+          console.warn(
+            "[rate-limit] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set — " +
+              "falling back to per-instance in-memory rate limiting (not a global quota).",
+          );
+        }
+        this.backend = new MemoryRateLimitBackend(this.config.limit, this.config.windowMs);
+      }
+    }
+    return this.backend;
+  }
+
+  check(key: string): Promise<RateLimitDecision> {
+    return this.resolved.check(key);
+  }
+  record(key: string): Promise<void> {
+    return this.resolved.record(key);
+  }
+  consume(key: string): Promise<RateLimitDecision> {
+    return this.resolved.consume(key);
+  }
+  reset(key: string): Promise<void> {
+    return this.resolved.reset(key);
+  }
+}
+
+export function createRateLimiter(config: RateLimiterConfig, env?: NodeJS.ProcessEnv): SharedRateLimiter {
+  return new SharedRateLimiter(config, env);
+}
+
+/**
+ * Shared limiters (module singletons so in-memory counters survive across
+ * requests handled by the same warm instance; with Upstash configured the
+ * counters are global in Redis).
  *
  * - login: only FAILED attempts are recorded (see login route) — 10 failures
  *   per 10 minutes per IP+email, reset on success. Legit users are never
@@ -107,6 +316,6 @@ export function tooManyRequests(decision: RateLimitDecision): NextResponse {
  * - register: every attempt counts — 5 per hour per IP.
  * - booking: every creation attempt counts — 30 per 10 minutes per user.
  */
-export const loginLimiter = new SlidingWindowLimiter(10, 10 * 60_000);
-export const registerLimiter = new SlidingWindowLimiter(5, 60 * 60_000);
-export const bookingLimiter = new SlidingWindowLimiter(30, 10 * 60_000);
+export const loginLimiter = createRateLimiter({ limit: 10, windowMs: 10 * 60_000, prefix: "sportshub:login" });
+export const registerLimiter = createRateLimiter({ limit: 5, windowMs: 60 * 60_000, prefix: "sportshub:register" });
+export const bookingLimiter = createRateLimiter({ limit: 30, windowMs: 10 * 60_000, prefix: "sportshub:booking" });

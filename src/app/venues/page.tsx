@@ -2,11 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import VenueCard from "@/components/VenueCard";
 import { getCurrentUser } from "@/lib/auth";
+import { getCachedSportsAndDistricts, getCachedVenueList, type VenueListFilters } from "@/lib/public-data";
 import { getLocale, getTranslations } from "next-intl/server";
 import { formatVND } from "@/lib/booking/logic";
 import { sportName } from "@/i18n/vocab";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Tìm sân" };
 
 interface SP { sport?: string; q?: string; district?: string; maxPrice?: string; minRating?: string; type?: string; beginner?: string; family?: string; sort?: string; date?: string; time?: string }
@@ -18,34 +18,24 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
   const tSports = await getTranslations("sports");
   const locale = await getLocale();
   const sportLabel = (slug: string, name: string) => sportName((k) => tSports(k), slug, name);
-  const sports = await prisma.sport.findMany();
-  const districts = [...new Set((await prisma.venue.findMany({ select: { district: true } })).map((v) => v.district))];
-  const venues = await prisma.venue.findMany({
-    where: {
-      status: "APPROVED",
-      ...(sp.district ? { district: sp.district } : {}),
-      ...(sp.type ? { venueType: sp.type } : {}),
-      ...(sp.beginner ? { beginnerFriendly: true } : {}),
-      ...(sp.family ? { familyFriendly: true } : {}),
-      ...(sp.minRating ? { ratingAvg: { gte: Number(sp.minRating) } } : {}),
-      ...(sp.sport ? { sports: { some: { sport: { slug: sp.sport } } } } : {}),
-      ...(sp.q ? { OR: [{ name: { contains: sp.q } }, { district: { contains: sp.q } }, { address: { contains: sp.q } }] } : {}),
-    },
-    include: { sports: { include: { sport: true } }, facilities: { include: { priceRules: true } } },
-  });
+  // The filtered venue query is data-cached (60 s, tag "venues") keyed by
+  // these normalized filters — repeat searches don't hit the database.
+  // The page itself stays per-request (searchParams + the visitor's own
+  // favorites), so results are never shared across users.
+  const filters: VenueListFilters = {
+    sport: sp.sport || null,
+    q: sp.q || null,
+    district: sp.district || null,
+    maxPrice: sp.maxPrice ? Number(sp.maxPrice) : null,
+    minRating: sp.minRating ? Number(sp.minRating) : null,
+    type: sp.type || null,
+    beginner: !!sp.beginner,
+    family: !!sp.family,
+    sort: sp.sort || null,
+  };
+  const { sports, districts } = await getCachedSportsAndDistricts();
+  const sorted = await getCachedVenueList(filters);
   const favIds = user ? (await prisma.favorite.findMany({ where: { userId: user.id } })).map((f) => f.venueId) : [];
-  const withPrice = venues.map((v) => ({
-    v, minPrice: v.facilities.flatMap((f) => f.priceRules.map((r) => r.pricePerHour)).sort((a, b) => a - b)[0] ?? null,
-  }));
-  const filtered = withPrice.filter((x) => !sp.maxPrice || (x.minPrice !== null && x.minPrice <= Number(sp.maxPrice)));
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sp.sort) {
-      case "price-asc": return (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity);
-      case "rating": return b.v.ratingAvg - a.v.ratingAvg;
-      case "newest": return b.v.createdAt.getTime() - a.v.createdAt.getTime();
-      default: return b.v.ratingAvg - a.v.ratingAvg;
-    }
-  });
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
       <form method="get" className="card h-fit space-y-3 p-4" aria-label={t("filters")}>
@@ -68,8 +58,8 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
           <div className="card p-8 text-center text-slate-500">{t("empty")}<br /><Link className="font-semibold text-primary" href="/venues">{t("viewAllVenues")}</Link></div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {sorted.map(({ v, minPrice }) => (
-              <VenueCard key={v.id} v={{ id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address, ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly, minPrice, sports: v.sports.map((s) => ({ slug: s.sport.slug, name: s.sport.name })), primarySportSlug: v.sports[0]?.sport.slug ?? null, isFavorite: favIds.includes(v.id) }} />
+            {sorted.map((v) => (
+              <VenueCard key={v.id} v={{ id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address, ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly, minPrice: v.minPrice, sports: v.sports, primarySportSlug: v.primarySportSlug, isFavorite: favIds.includes(v.id) }} />
             ))}
           </div>
         )}

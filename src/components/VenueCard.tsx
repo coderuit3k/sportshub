@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { MapPin, Star, Heart } from "lucide-react";
+import { MapPin, Star } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { formatVND } from "@/lib/booking/logic";
 import { formatDistance } from "@/lib/geo/rank";
 import { sportName } from "@/i18n/vocab";
 import VenueImage from "@/components/VenueImage";
+import FavoriteHeart from "@/components/FavoriteHeart";
 
 export interface VenueCardSport { slug: string; name: string }
 export interface VenueCardData {
@@ -30,7 +31,7 @@ export default function VenueCard({ v }: { v: VenueCardData }) {
       <div className="relative h-40 overflow-hidden">
         <VenueImage primarySportSlug={v.primarySportSlug} venueSlug={v.slug} venueName={v.name} className="absolute inset-0" />
         <span className="absolute right-3 top-3 z-10 chip bg-white/90">{primarySport}</span>
-        {v.isFavorite && <Heart className="absolute left-3 top-3 z-10 h-5 w-5 fill-red-500 text-red-500" />}
+        <FavoriteHeart venueId={v.id} initial={v.isFavorite ?? false} />
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
         {/* prefetch={false}: the detail page is force-dynamic and computes live

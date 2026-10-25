@@ -176,3 +176,111 @@ Known gaps (deliberate, this round):
   session titles/descriptions, notifications, and facility surface
   labels render as stored.
 - Page `<title>` metadata strings are not localized yet.
+
+## Caching & rate limiting
+
+Prepared for market traffic: cut repeated database reads on the public
+pages and make the abuse brakes global. Two mechanisms, deliberately
+kept apart:
+
+### Page/data caching (`src/lib/public-data.ts`)
+
+The public pages declare their freshness intent with
+`export const revalidate` (home `/`: 300 s, venue detail
+`/venues/[slug]`: 300 s), but the actual read reduction happens one
+layer down, in `unstable_cache` data functions:
+
+| Data | TTL | Tag |
+| --- | --- | --- |
+| Homepage sports + featured venues | 300 s | `venues` |
+| Homepage open sessions ("from today") | 300 s | `sessions` |
+| Venue detail payload (incl. reviews) | 300 s | `venues` |
+| `/venues` filtered list (keyed by the normalized filter set) | 60 s | `venues` |
+| `/venues` filter sidebar (sports + districts) | 60 s | `venues` |
+
+Cached payloads are plain serializable DTOs (dates cross the cache as
+ISO strings / epoch numbers). Consequences, all deliberate:
+
+- **Reviews can lag up to 5 minutes** on the venue page; the homepage
+  "from today" session boundary can lag up to 5 minutes past midnight.
+  Slot *availability* is NOT cached — the detail page still computes it
+  live per request, and booking creation re-validates server-side.
+- **Invalidation:** admin venue approve/reject
+  (`POST /api/admin/venues/[id]`) calls `revalidateTag("venues")` plus
+  `revalidatePath` for `/`, `/venues`, and the venue's own page, so a
+  visibility change is reflected immediately; TTL expiry is the
+  backstop for everything else. (There is no review-creation endpoint —
+  reviews are seed data — so no other mutation invalidates today.)
+
+**Favorites hydration.** Because the payloads above are user-less, the
+home and venue-detail pages render favorite state as "off". After
+mount, hearts/buttons hydrate from `GET /api/me/favorites`
+(`src/components/use-favorites.ts` — one shared fetch per page load).
+The endpoint always answers 200: `{ authenticated: false, venueIds: [] }`
+for anonymous visitors (nothing sensitive to protect, no client error
+handling needed), `{ authenticated: true, venueIds: [...] }` when
+signed in. Anonymous visitors see the login link on the detail page
+once hydration resolves; toggling still uses `POST /api/favorites`
+unchanged. `/venues` and `/favorites` keep their per-request
+server-rendered favorite state.
+
+**Locale × cache verdict (verified 2026-10-25).** One risk was checked
+explicitly: with cookie-based i18n, could a route cache bake one
+visitor's language into another's response? It cannot happen here —
+the locale lookup (`cookies()` inside `getRequestConfig`) makes Next
+bail out of static generation, so `/` and `/venues/[slug]` build as
+dynamic (ƒ) routes and every response is rendered per-request in the
+visitor's own locale; the `revalidate` exports are inert freshness
+declarations today. The runtime matrix against the production build —
+`/` and a venue detail requested as `en → vi (no cookie) → en`, each
+response's `<html lang>` and copy checked — passed with zero
+cross-locale bleed, and the i18n E2E exercises both locales
+repeatedly against the same build. The trade-off is accepted and
+documented: no full-route HTML caching for these pages (per-request
+render + data cache instead). If the locale ever moves into the URL,
+the same `revalidate` values will govern real ISR — re-run the locale
+matrix before relying on that.
+
+### Rate limiting (`src/lib/rate-limit.ts`)
+
+One async surface — `check` / `record` / `consume` / `reset` — with two
+backends, chosen per limiter at first use:
+
+- **Upstash (shared/global)** when `UPSTASH_REDIS_REST_URL` and
+  `UPSTASH_REDIS_REST_TOKEN` are set: `@upstash/ratelimit`
+  sliding-window counters in Redis, enforced across all instances.
+  Semantics map 1:1 (`check` → `getRemaining()` peek, `record` →
+  `limit()`, `reset` → `resetUsedTokens()`). One delta: Upstash's
+  sliding window is a weighted two-bucket approximation, not the exact
+  timestamp log of the in-memory limiter, so counts right at a window
+  boundary can differ slightly. If an Upstash call errors, that call
+  degrades to the in-memory backend instead of failing the request.
+- **In-memory (fallback)** otherwise: the original per-instance
+  limiter — fine for local dev; on serverless the effective limit is
+  roughly `limit × instances`. A one-time warning is logged when this
+  fallback is active with `NODE_ENV=production`.
+
+Quotas (unchanged): login 10 **failed** attempts / 10 min per IP+email
+(reset on success), register 5 / hour per IP, booking 30 / 10 min
+per user.
+
+**Activating Upstash (production):**
+
+1. Create a Redis database at [console.upstash.com](https://console.upstash.com)
+   (a regional database near the deployment region is fine).
+2. In Vercel → project → Settings → Environment Variables, set
+   `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from the
+   database's REST credentials (Production scope).
+3. Redeploy. No code change is needed — the limiters pick the backend
+   up from the environment. Until then, the in-memory fallback keeps
+   working exactly as before.
+
+### Remaining limits
+
+- No full-route/edge HTML cache for `/` and `/venues/[slug]` (see the
+  locale verdict above) — mitigated by the data cache, Prisma query
+  shapes, and per-request rendering being cheap once data is cached.
+- `/venues` beyond the 60 s data cache and per-user pages
+  (`/my-bookings`, `/favorites`, …) are uncached by design.
+- Rate limiting is fail-open to per-instance memory during an Upstash
+  outage (availability chosen over strictness, deliberately).

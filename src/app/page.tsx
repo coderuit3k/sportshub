@@ -1,43 +1,43 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
 import FeaturedVenues from "@/components/FeaturedVenues";
 import SportIcon from "@/components/SportIcon";
-import { getCurrentUser } from "@/lib/auth";
 import { Search, Users } from "lucide-react";
 import { formatVND } from "@/lib/booking/logic";
 import { todayDateISO, startOfDay } from "@/lib/time/tz";
+import { getCachedFeaturedVenues, getCachedHomeSessions, getCachedSports } from "@/lib/public-data";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import { sportName } from "@/i18n/vocab";
 import { DATE_TIME_OPTIONS } from "@/i18n/format";
 
-export const dynamic = "force-dynamic";
+/**
+ * Freshness intent for the public payload below. NOTE: with the
+ * cookie-based locale, this route still renders per-request (the locale
+ * lookup bails out of the full-route cache — verified; see
+ * docs/architecture.md → "Caching & rate limiting"), so the actual
+ * database-load reduction comes from the `unstable_cache` data layer in
+ * src/lib/public-data.ts using this same 300 s window. The page renders
+ * WITHOUT user context: favorite hearts hydrate client-side from
+ * /api/me/favorites.
+ */
+export const revalidate = 300;
 
 export default async function HomePage() {
-  const user = await getCurrentUser();
   const t = await getTranslations("home");
   const tSports = await getTranslations("sports");
   const locale = await getLocale();
   const format = await getFormatter();
   const sportLabel = (slug: string, name: string) => sportName((k) => tSports(k), slug, name);
-  const sports = await prisma.sport.findMany({ include: { _count: { select: { venues: true } } } });
-  const venues = await prisma.venue.findMany({
-    where: { status: "APPROVED" },
-    include: { sports: { include: { sport: true } }, facilities: { include: { priceRules: true } } },
-    orderBy: { ratingAvg: "desc" }, take: 6,
-  });
-  const favIds = user ? (await prisma.favorite.findMany({ where: { userId: user.id } })).map((f) => f.venueId) : [];
+  const sports = await getCachedSports();
+  const venues = await getCachedFeaturedVenues();
   // "From today" = from 00:00 Asia/Ho_Chi_Minh today, regardless of server TZ.
+  // Inside the 300 s cache window this boundary can lag by up to 5 minutes.
   const todayStart = startOfDay(todayDateISO());
-  const sessions = await prisma.sportsSession.findMany({
-    where: { status: { in: ["OPEN", "FULL"] }, startAt: { gte: todayStart } },
-    include: { sport: true, venue: true, participants: { where: { status: "JOINED" } } },
-    orderBy: { startAt: "asc" }, take: 3,
-  });
-  const toCard = (v: typeof venues[number]) => ({
+  const sessions = await getCachedHomeSessions(todayStart.toISOString());
+  const toCard = (v: (typeof venues)[number]) => ({
     id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address,
     ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly,
-    minPrice: v.facilities.flatMap((f) => f.priceRules.map((r) => r.pricePerHour)).sort((a, b) => a - b)[0] ?? null,
-    sports: v.sports.map((s) => ({ slug: s.sport.slug, name: s.sport.name })), primarySportSlug: v.sports[0]?.sport.slug ?? null, isFavorite: favIds.includes(v.id),
+    minPrice: v.minPrice,
+    sports: v.sports, primarySportSlug: v.primarySportSlug, isFavorite: false,
     latitude: v.latitude, longitude: v.longitude,
   });
   return (
@@ -60,7 +60,7 @@ export default async function HomePage() {
           {sports.map((s) => (
             <Link key={s.id} href={`/venues?sport=${s.slug}`} className="card p-4 text-center hover:shadow-md">
               <p><SportIcon slug={s.slug} className="text-3xl" /></p><p className="mt-1 font-bold">{sportLabel(s.slug, s.name)}</p>
-              <p className="text-sm text-slate-500">{t("venueClusters", { count: s._count.venues })}</p>
+              <p className="text-sm text-slate-500">{t("venueClusters", { count: s.venueCount })}</p>
             </Link>
           ))}
         </div>
@@ -77,10 +77,10 @@ export default async function HomePage() {
           <div className="grid gap-4 md:grid-cols-3">
             {sessions.map((s) => (
               <article key={s.id} className="card p-4">
-                <p className="chip"><SportIcon slug={s.sport.slug} />{sportLabel(s.sport.slug, s.sport.name)}</p>
+                <p className="chip"><SportIcon slug={s.sportSlug} />{sportLabel(s.sportSlug, s.sportName)}</p>
                 <h3 className="mt-2 font-bold">{s.title}</h3>
-                <p className="text-sm text-slate-500">{s.venue?.name ?? t("venueTbd")} — {format.dateTime(s.startAt, DATE_TIME_OPTIONS)}</p>
-                <p className="mt-1 text-sm">{t("sessionMeta", { joined: s.participants.length, max: s.maxParticipants, price: formatVND(s.costPerPerson, locale) })}</p>
+                <p className="text-sm text-slate-500">{s.venueName ?? t("venueTbd")} — {format.dateTime(new Date(s.startAt), DATE_TIME_OPTIONS)}</p>
+                <p className="mt-1 text-sm">{t("sessionMeta", { joined: s.joinedCount, max: s.maxParticipants, price: formatVND(s.costPerPerson, locale) })}</p>
                 <Link href="/community" className="mt-3 inline-block font-semibold text-primary">{t("join")}</Link>
               </article>
             ))}

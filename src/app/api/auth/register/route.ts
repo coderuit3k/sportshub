@@ -12,7 +12,7 @@ const schema = z.object({
   role: z.enum(["PLAYER", "OWNER"]).default("PLAYER"),
 });
 export async function POST(req: Request) {
-  const gate = registerLimiter.consume(`register:${getClientIp(req)}`);
+  const gate = await registerLimiter.consume(`register:${getClientIp(req)}`);
   if (!gate.allowed) return tooManyRequests(gate);
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dữ liệu không hợp lệ (mật khẩu tối thiểu 8 ký tự)" }, { status: 400 });

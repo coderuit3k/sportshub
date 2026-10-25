@@ -1,16 +1,45 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Heart } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { formatVND } from "@/lib/booking/logic";
+import { useFavoriteIds } from "@/components/use-favorites";
 
-export function FavoriteButton({ venueId, initial }: { venueId: string; initial: boolean }) {
+/**
+ * Favorite toggle for the venue detail page. The page itself renders
+ * WITHOUT user context (its data is cached), so this button hydrates:
+ * on mount it learns from /api/me/favorites whether the visitor is
+ * signed in and whether this venue is already saved. Anonymous visitors
+ * get the login link instead of the button (their toggle POST would
+ * 401 anyway — that handling stays as a backstop). Toggling uses the
+ * same POST /api/favorites endpoint as before.
+ */
+export function FavoriteButton({ venueId, initial = false, loginLabel }: { venueId: string; initial?: boolean; loginLabel: string }) {
   const t = useTranslations("booking");
   const [fav, setFav] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [auth, setAuth] = useState<"unknown" | "in" | "out">("unknown");
+  const touchedRef = useRef(false);
+  const favoriteIds = useFavoriteIds();
+
+  useEffect(() => {
+    if (!favoriteIds) return;
+    setAuth(favoriteIds.authenticated ? "in" : "out");
+    // Correct the initial (user-less) render — unless the user already
+    // toggled in the meantime, in which case their action wins.
+    if (favoriteIds.authenticated && !touchedRef.current) {
+      setFav(favoriteIds.venueIds.includes(venueId));
+    }
+  }, [favoriteIds, venueId]);
+
+  if (auth === "out") {
+    return <Link href="/login" className="btn-outline w-full">{loginLabel}</Link>;
+  }
   return (
     <button disabled={busy} className="btn-outline !py-2 text-sm"
       onClick={async () => {
+        touchedRef.current = true;
         setBusy(true);
         const r = await fetch("/api/favorites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venueId }) });
         if (r.status === 401) { window.location.href = "/login"; return; }
