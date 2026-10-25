@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 export default function ChangePasswordForm() {
+  const t = useTranslations("account");
   const [msg, setMsg] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -25,27 +27,29 @@ export default function ChangePasswordForm() {
         const data = (await r.json().catch(() => null)) as { error?: string } | null;
         setBusy(false);
         setOk(r.ok);
-        setMsg(r.ok ? "Đã đổi mật khẩu. Lần đăng nhập tới hãy dùng mật khẩu mới." : (data?.error ?? "Đổi mật khẩu thất bại."));
+        // API error strings stay Vietnamese (known i18n gap); the success
+        // message and the client-side fallback are localized.
+        setMsg(r.ok ? t("passwordChanged") : (data?.error ?? t("passwordChangeFailed")));
         if (r.ok) e.currentTarget.reset();
       }}
     >
-      <h2 className="font-bold">Đổi mật khẩu</h2>
+      <h2 className="font-bold">{t("passwordHeading")}</h2>
       <div>
-        <label className="label" htmlFor="currentPassword">Mật khẩu hiện tại</label>
+        <label className="label" htmlFor="currentPassword">{t("currentPassword")}</label>
         <input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required className="input" />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div>
-          <label className="label" htmlFor="newPassword">Mật khẩu mới</label>
+          <label className="label" htmlFor="newPassword">{t("newPassword")}</label>
           <input id="newPassword" name="newPassword" type="password" autoComplete="new-password" required className="input" />
-          <p className="mt-1 text-xs text-slate-500">Tối thiểu 10 ký tự, khác mật khẩu hiện tại.</p>
+          <p className="mt-1 text-xs text-slate-500">{t("passwordHintText")}</p>
         </div>
         <div>
-          <label className="label" htmlFor="confirmPassword">Nhập lại mật khẩu mới</label>
+          <label className="label" htmlFor="confirmPassword">{t("confirmPassword")}</label>
           <input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required className="input" />
         </div>
       </div>
-      <button className="btn-primary" type="submit" disabled={busy}>{busy ? "Đang xử lý…" : "Đổi mật khẩu"}</button>
+      <button className="btn-primary" type="submit" disabled={busy}>{busy ? t("processing") : t("changePasswordSubmit")}</button>
       {msg && <p role="status" className={`text-sm ${ok ? "text-primary" : "text-red-600"}`}>{msg}</p>}
     </form>
   );

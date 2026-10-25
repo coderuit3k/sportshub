@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Locate, MapPin, X } from "lucide-react";
 import VenueCard, { type VenueCardData } from "@/components/VenueCard";
 import { rankVenues, type UserPosition } from "@/lib/geo/rank";
@@ -15,6 +16,8 @@ import { rankVenues, type UserPosition } from "@/lib/geo/rank";
  * entirely on the client and never sent to the server — and re-ranks.
  * Denial, timeout or an unsupported browser keeps the default ranking
  * and shows a short explanatory note; the list never breaks.
+ *
+ * All UI copy comes from the `home.featured` message namespace.
  */
 
 export interface FeaturedVenueData extends VenueCardData {
@@ -25,6 +28,7 @@ export interface FeaturedVenueData extends VenueCardData {
 type GeoStatus = "idle" | "loading" | "granted" | "error";
 
 export default function FeaturedVenues({ venues }: { venues: FeaturedVenueData[] }) {
+  const t = useTranslations("home.featured");
   const [userPos, setUserPos] = useState<UserPosition | null>(null);
   const [status, setStatus] = useState<GeoStatus>("idle");
 
@@ -59,9 +63,9 @@ export default function FeaturedVenues({ venues }: { venues: FeaturedVenueData[]
       {status === "granted" ? (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-600" role="status">
           <MapPin className="h-4 w-4 text-primary" />
-          <span>Đang xếp theo vị trí của bạn — đánh giá, rồi khoảng cách, rồi giá.</span>
+          <span>{t("rankedStatus")}</span>
           <button type="button" onClick={resetLocation} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
-            <X className="h-4 w-4" /> Tắt vị trí
+            <X className="h-4 w-4" /> {t("resetLocation")}
           </button>
         </div>
       ) : (
@@ -72,18 +76,18 @@ export default function FeaturedVenues({ venues }: { venues: FeaturedVenueData[]
             disabled={status === "loading"}
             className="btn-primary !px-3 !py-1.5 text-sm disabled:opacity-60"
           >
-            <Locate className="h-4 w-4" /> {status === "loading" ? "Đang lấy vị trí…" : "Dùng vị trí của tôi"}
+            <Locate className="h-4 w-4" /> {status === "loading" ? t("locating") : t("useMyLocation")}
           </button>
-          <span className="text-sm text-slate-500">Vị trí chỉ xử lý trên trình duyệt của bạn, không gửi lên máy chủ.</span>
+          <span className="text-sm text-slate-500">{t("privacyNote")}</span>
           {status === "error" && (
             <span className="text-sm font-medium text-amber-600" role="status">
-              Không lấy được vị trí — danh sách đang xếp theo đánh giá và giá.
+              {t("locationError")}
             </span>
           )}
         </div>
       )}
       {ranked.length === 0 ? (
-        <p className="card p-6 text-slate-500">Chưa có dữ liệu sân — hãy chạy seed (npm run db:seed).</p>
+        <p className="card p-6 text-slate-500">{t("noData")}</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {ranked.map((v) => (

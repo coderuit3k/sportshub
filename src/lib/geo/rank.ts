@@ -75,13 +75,17 @@ export function rankVenues<T extends RankableVenue>(
 }
 
 /**
- * Human-readable distance, vi-VN style:
- *   < 1 km  → whole metres, e.g. "850 m"
- *   < 10 km → one decimal with a comma separator, e.g. "2,3 km"
+ * Human-readable distance, following the active locale:
+ *   < 1 km  → whole metres, e.g. "850 m" (both locales)
+ *   < 10 km → one decimal, e.g. "2,3 km" (vi) / "2.3 km" (en)
  *   ≥ 10 km → whole kilometres, e.g. "13 km"
+ * Defaults to vi so existing callers/tests are unchanged.
  */
-export function formatDistance(km: number): string {
+export function formatDistance(km: number, locale = "vi"): string {
   if (km < 1) return `${Math.round(km * 1000)} m`;
-  if (km < 10) return `${km.toFixed(1).replace(".", ",")} km`;
+  if (km < 10) {
+    const fixed = km.toFixed(1);
+    return `${locale.startsWith("en") ? fixed : fixed.replace(".", ",")} km`;
+  }
   return `${Math.round(km)} km`;
 }

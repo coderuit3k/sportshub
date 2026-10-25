@@ -102,7 +102,11 @@ export function isSessionFull(currentJoined: number, maxParticipants: number): b
   return currentJoined >= maxParticipants;
 }
 
-export function formatVND(amount: number): string {
+export function formatVND(amount: number, locale = "vi-VN"): string {
+  // Locale-aware price rendering: vi keeps the historical "160.000 đ"
+  // format (unit tests + owner/admin pages rely on the default), en uses
+  // "160,000 VND".
+  if (locale.startsWith("en")) return `${new Intl.NumberFormat("en-US").format(amount)} VND`;
   return new Intl.NumberFormat("vi-VN").format(amount) + " đ";
 }
 export function makeReference(now = new Date()): string {

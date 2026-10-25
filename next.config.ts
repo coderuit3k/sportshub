@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// Cookie-based i18n (no locale routing) — see src/i18n/request.ts.
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+
 const nextConfig: NextConfig = {
   images: {
     // Venue photos: per-venue photos hotlinked from real facility
@@ -18,4 +23,4 @@ const nextConfig: NextConfig = {
     ],
   },
 };
-export default nextConfig;
+export default withNextIntl(nextConfig);

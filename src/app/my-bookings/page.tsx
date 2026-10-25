@@ -5,41 +5,50 @@ import { getCurrentUser } from "@/lib/auth";
 import { BookingActionButtons } from "@/components/client-widgets";
 import { refundPreview } from "@/services/bookings";
 import { formatVND } from "@/lib/booking/logic";
+import { getFormatter, getLocale, getTranslations } from "next-intl/server";
+import { DATE_TIME_OPTIONS } from "@/i18n/format";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Lịch đặt của tôi" };
 
 const TABS = [
-  { key: "upcoming", label: "Sắp diễn ra", statuses: ["CONFIRMED"] },
-  { key: "pending", label: "Chờ duyệt", statuses: ["PENDING"] },
-  { key: "completed", label: "Đã hoàn thành", statuses: ["COMPLETED"] },
-  { key: "cancelled", label: "Đã hủy", statuses: ["CANCELLED", "REJECTED", "EXPIRED"] },
+  { key: "upcoming", labelKey: "tabUpcoming", statuses: ["CONFIRMED"] },
+  { key: "pending", labelKey: "tabPending", statuses: ["PENDING"] },
+  { key: "completed", labelKey: "tabCompleted", statuses: ["COMPLETED"] },
+  { key: "cancelled", labelKey: "tabCancelled", statuses: ["CANCELLED", "REJECTED", "EXPIRED"] },
 ] as const;
 
 export default async function MyBookingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const t = await getTranslations("account");
+  const locale = await getLocale();
+  const format = await getFormatter();
   const sp = await searchParams;
-  const counts = await Promise.all(TABS.map(async (t) => ({ key: t.key, count: await prisma.booking.count({ where: { userId: user.id, status: { in: [...t.statuses] } } }) })));
-  const active = TABS.find((t) => t.key === sp.tab) ?? TABS[0];
+  const counts = await Promise.all(TABS.map(async (tb) => ({ key: tb.key, count: await prisma.booking.count({ where: { userId: user.id, status: { in: [...tb.statuses] } } }) })));
+  const active = TABS.find((tb) => tb.key === sp.tab) ?? TABS[0];
   const bookings = await prisma.booking.findMany({
     where: { userId: user.id, status: { in: [...active.statuses] } },
     include: { venue: true, facility: true, payments: true },
     orderBy: { startAt: "asc" },
   });
-  const fmt = (d: Date) => d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const fmt = (d: Date) => format.dateTime(d, DATE_TIME_OPTIONS);
+  const tierLabel = (tier: string) => {
+    const key = `refundTier${tier}`;
+    return t.has(key) ? t(key) : tier;
+  };
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold">Lịch đặt của tôi</h1>
-      <p className="mb-4 text-sm text-slate-500">Hồ sơ: {user.name}.</p>
+      <h1 className="mb-1 text-2xl font-bold">{t("bookingsHeading")}</h1>
+      <p className="mb-4 text-sm text-slate-500">{t("bookingsProfile", { name: user.name })}</p>
       <div className="mb-6 flex flex-wrap gap-2" role="tablist">
-        {TABS.map((t) => (
-          <Link key={t.key} href={`/my-bookings?tab=${t.key}`} className={`rounded-full px-4 py-2 text-sm font-semibold ${active.key === t.key ? "bg-primary text-white" : "bg-white border"}`}>
-            {t.label} ({counts.find((c) => c.key === t.key)?.count ?? 0})
+        {TABS.map((tb) => (
+          <Link key={tb.key} href={`/my-bookings?tab=${tb.key}`} className={`rounded-full px-4 py-2 text-sm font-semibold ${active.key === tb.key ? "bg-primary text-white" : "bg-white border"}`}>
+            {t(tb.labelKey)} ({counts.find((c) => c.key === tb.key)?.count ?? 0})
           </Link>
         ))}
       </div>
-      {bookings.length === 0 ? <p className="card p-8 text-center text-slate-500">Chưa có đặt sân ở mục này. <Link className="font-semibold text-primary" href="/venues">Tìm sân ngay →</Link></p> : (
+      {bookings.length === 0 ? <p className="card p-8 text-center text-slate-500">{t("bookingsEmpty")} <Link className="font-semibold text-primary" href="/venues">{t("findVenueNow")}</Link></p> : (
         <div className="space-y-4">
           {bookings.map((b) => {
             const preview = (b.status === "CONFIRMED" || b.status === "PENDING") ? refundPreview(b) : null;
@@ -49,10 +58,10 @@ export default async function MyBookingsPage({ searchParams }: { searchParams: P
                   <div>
                     <h2 className="font-bold">{b.venue.name}</h2>
                     <p className="text-sm text-slate-500">{b.facility.name} — {fmt(b.startAt)} → {fmt(b.endAt)}</p>
-                    <p className="text-sm">Mã: <code className="font-semibold">#{b.reference}</code> — Trạng thái: <strong>{b.status}</strong></p>
-                    <p className="text-sm">Tổng: <strong className="text-primary">{formatVND(b.totalPrice)}</strong> — {b.payments.length === 0 ? "Chưa có thanh toán" : b.payments.some((p) => p.amount < 0) ? "Đã hoàn tiền" : "Đã thanh toán"}</p>
-                    {preview && <p className="text-sm text-slate-500">Nếu hủy bây giờ: hoàn {formatVND(preview.refundAmount)} (mức {preview.tier}).</p>}
-                    <p className="mt-1 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold">QR check-in: {b.reference}</p>
+                    <p className="text-sm">{t("bookingCode")}: <code className="font-semibold">#{b.reference}</code> — {t("bookingStatus")}: <strong>{b.status}</strong></p>
+                    <p className="text-sm">{t("bookingTotal")}: <strong className="text-primary">{formatVND(b.totalPrice, locale)}</strong> — {b.payments.length === 0 ? t("noPayment") : b.payments.some((p) => p.amount < 0) ? t("refunded") : t("paid")}</p>
+                    {preview && <p className="text-sm text-slate-500">{t("refundPreview", { amount: formatVND(preview.refundAmount, locale), tier: tierLabel(preview.tier) })}</p>}
+                    <p className="mt-1 inline-block rounded bg-slate-100 px-2 py-1 text-xs font-semibold">{t("qrCheckin")}: {b.reference}</p>
                   </div>
                   {(b.status === "CONFIRMED" || b.status === "PENDING") && <BookingActionButtons bookingId={b.id} actions={["cancel"]} />}
                 </div>

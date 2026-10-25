@@ -119,3 +119,54 @@ the API is unsupported, the section keeps that default ranking and
 shows a short note ("Không lấy được vị trí — danh sách đang xếp theo
 đánh giá và giá."); the visitor can also turn location off again
 ("Tắt vị trí") to return to the default order.
+
+## Internationalization (i18n)
+
+The UI is bilingual **vi (default) / en** via **next-intl**, with a
+cookie-based locale and **no URL restructuring**:
+
+- `src/i18n/request.ts` (`getRequestConfig`) reads the locale from the
+  `NEXT_LOCALE` cookie (falling back to `vi` for missing/invalid
+  values) and loads `messages/<locale>.json`. `next.config.ts` is
+  wrapped with `createNextIntlPlugin`; there is deliberately **no**
+  locale middleware/routing.
+- The navbar `LanguageSwitcher` (`src/components/LanguageSwitcher.tsx`,
+  visible in both the desktop and mobile nav) sets the cookie
+  (path=/, 1 year, sameSite=lax) and reloads the page. A hard reload is
+  used on purpose: `router.refresh()` does not patch `<html lang>`,
+  which the root layout renders from the active locale.
+- The root layout sets `<html lang={locale}>` and wraps the app in
+  `NextIntlClientProvider`. Datetimes render through next-intl's
+  formatter with the shared options in `src/i18n/format.ts` (Saigon
+  wall clock in both locales); prices via `formatVND(amount, locale)`
+  ("160.000 đ" vs "160,000 VND"); distances via
+  `formatDistance(km, locale)` ("2,3 km" vs "2.3 km").
+
+Dictionaries live in `messages/vi.json` + `messages/en.json`, namespaced
+by area (`nav`, `footer`, `home`, `venues`, `venueDetail`, `booking`,
+`community`, `auth`, `account`, `common`, `sports`, `amenities`).
+**Adding a string:** add the key to *both* files (vi = the product
+copy, en = its translation) and read it with `useTranslations` /
+`getTranslations`. `tests/i18n-parity.test.ts` fails the unit suite if
+the key sets or ICU placeholders drift apart.
+
+Coverage: navbar + footer, homepage (hero/search/sports/featured +
+geolocation UI/sessions/CTA), `/venues`, venue detail + booking widget,
+`/community` + create-session form, `/login` + `/register`,
+`/my-bookings`, `/favorites`, `/notifications`, `/profile`, and the
+404/error/loading chrome. Closed vocabularies are dictionary-driven:
+sport names by slug and the five seeded amenity names (see
+`src/i18n/vocab.ts`); anything unknown renders as stored.
+
+Known gaps (deliberate, this round):
+
+- **Owner and admin dashboards' inner pages stay Vietnamese** (the
+  shared nav/footer around them translate; shared widgets like the
+  booking action buttons translate everywhere they appear).
+- **API-returned error strings stay Vietnamese** — server routes return
+  Vietnamese `error` messages which the UI displays verbatim; only
+  client-side fallback/success messages are localized.
+- **DB content is not translated**: venue names/descriptions, reviews,
+  session titles/descriptions, notifications, and facility surface
+  labels render as stored.
+- Page `<title>` metadata strings are not localized yet.
