@@ -78,7 +78,7 @@ export const getCachedSports = unstable_cache(
     const bySportId = new Map(counts.map((c) => [c.sportId, c._count._all]));
     return sports.map((s) => ({ id: s.id, slug: s.slug, name: s.name, venueCount: bySportId.get(s.id) ?? 0 }));
   },
-  ["public:sports"],
+  ["public:sports:v2"],
   { revalidate: 300, tags: [VENUES_TAG] },
 );
 
@@ -107,7 +107,7 @@ export const getCachedFeaturedVenues = unstable_cache(
       longitude: v.longitude,
     }));
   },
-  ["public:featured-venues"],
+  ["public:featured-venues:v2"],
   { revalidate: 300, tags: [VENUES_TAG] },
 );
 
@@ -136,7 +136,7 @@ export const getCachedHomeSessions = unstable_cache(
       costPerPerson: s.costPerPerson,
     }));
   },
-  ["public:home-sessions"],
+  ["public:home-sessions:v2"],
   { revalidate: 300, tags: [SESSIONS_TAG] },
 );
 
@@ -216,7 +216,7 @@ export const getCachedVenueList = unstable_cache(
       primarySportSlug: v.sports[0]?.sport.slug ?? null,
     }));
   },
-  ["public:venue-list"],
+  ["public:venue-list:v2"],
   { revalidate: 60, tags: [VENUES_TAG] },
 );
 
@@ -229,7 +229,7 @@ export const getCachedSportsAndDistricts = unstable_cache(
       districts: [...new Set(districtRows.map((v) => v.district))],
     };
   },
-  ["public:sports-districts"],
+  ["public:sports-districts:v2"],
   { revalidate: 60, tags: [VENUES_TAG] },
 );
 
@@ -317,6 +317,6 @@ export const getCachedVenueDetail = unstable_cache(
       sessions: venue.sessions.map((s) => ({ id: s.id, title: s.title, startAt: s.startAt.toISOString() })),
     };
   },
-  ["public:venue-detail"],
+  ["public:venue-detail:v2"],
   { revalidate: 300, tags: [VENUES_TAG] },
 );
