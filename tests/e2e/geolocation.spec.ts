@@ -3,6 +3,12 @@ import { test, expect, type Page } from "@playwright/test";
 /**
  * Geolocation ranking for the homepage "Sân nổi bật" section.
  *
+ * There is NO in-page locate button: on mount the component calls the
+ * Geolocation API, the browser/device shows its native permission
+ * prompt, and the section reacts to the outcome. Granted → distances
+ * appear and the grid re-ranks; denied → a plain-text note appears and
+ * the default ranking stays.
+ *
  * Ranking rules (src/lib/geo/rank.ts): rating desc → distance asc → price asc.
  * All seed venues share the same price rules (min 120.000 đ), so with the
  * browser positioned in Thủ Đức (10.8500, 106.7550 — ~47 m from Smash
@@ -11,6 +17,8 @@ import { test, expect, type Page } from "@playwright/test";
  *   Smash 4.9★ (~0,05 km) → Riverside 4.8★ (~9,3 km) → PickleHub 4.7★
  *   (~7,3 km) → Football Q7 4.6★ (~13,3 km) → Aqua Q7 4.6★ (~14,2 km)
  *   → Hoops 4.5★ (~1,2 km — nearest after Smash, but lowest rated).
+ * The same order is also the default (rating → price) order because the
+ * seed prices are identical, which the denied test relies on.
  */
 const EXPECTED_ORDER = [
   "CLB Cầu Lông Smash Arena Thủ Đức",
@@ -31,17 +39,16 @@ test.describe("geolocation granted (Thủ Đức)", () => {
     geolocation: { latitude: 10.85, longitude: 106.755 },
   });
 
-  test("ranks featured venues by rating → distance → price and shows distances", async ({ page }) => {
+  test("auto-ranks by rating → distance → price on load, with no locate button", async ({ page }) => {
     await page.goto("/");
     const section = featuredSection(page);
     await expect(section.locator("article").first()).toBeVisible();
 
-    // Before opting in: no distances anywhere in the section.
-    await expect(section.getByText(/Cách bạn/)).toHaveCount(0);
+    // The old opt-in UI is gone: no locate button anywhere on the page.
+    await expect(page.getByRole("button", { name: "Dùng vị trí của tôi" })).toHaveCount(0);
 
-    await section.getByRole("button", { name: "Dùng vị trí của tôi" }).click();
-
-    // Status line confirms the location-based ranking is active.
+    // Without clicking anything, the granted position re-ranks the grid:
+    // the status line confirms the location-based ranking is active.
     await expect(section.getByText("Đang xếp theo vị trí của bạn")).toBeVisible();
 
     // Distances appear on the cards (first card carries one).
@@ -62,7 +69,7 @@ test.describe("geolocation granted (Thủ Đức)", () => {
 });
 
 test.describe("geolocation denied", () => {
-  test("shows the graceful note and keeps the default ranking visible", async ({ page }) => {
+  test("shows the graceful note on load and keeps the default ranking visible", async ({ page }) => {
     // Deterministically simulate a denied permission: the browser calls
     // the error callback (code 1) instead of ever returning a position.
     await page.addInitScript(() => {
@@ -79,8 +86,8 @@ test.describe("geolocation denied", () => {
     const section = featuredSection(page);
     await expect(section.locator("article").first()).toBeVisible();
 
-    await section.getByRole("button", { name: "Dùng vị trí của tôi" }).click();
-
+    // No locate button here either — the note appears on its own.
+    await expect(page.getByRole("button", { name: "Dùng vị trí của tôi" })).toHaveCount(0);
     await expect(
       section.getByText("Không lấy được vị trí — danh sách đang xếp theo đánh giá và giá."),
     ).toBeVisible();

@@ -109,16 +109,23 @@ browser coverage in `tests/e2e/geolocation.spec.ts`). Venues without
 coordinates count as infinitely far, venues without a price as
 infinitely expensive; a full tie keeps the incoming order (stable sort).
 
-Privacy: the position comes from the browser Geolocation API, only
-after the visitor clicks "Dùng vị trí của tôi", and is processed
-**entirely on the client** — coordinates are never sent to the server,
-stored, or logged. The initial server render has no position, so it
+Privacy: the position comes from the browser Geolocation API and is
+processed **entirely on the client** — coordinates are never sent to
+the server, stored, or logged. There is deliberately **no in-page
+locate button**: on mount, the component calls
+`navigator.geolocation.getCurrentPosition` once, so the browser/device
+itself presents the native permission prompt and the section reacts
+to the outcome. The initial server render has no position, so it
 ranks by rating → price and the full cards are present in the HTML
-without JavaScript. If permission is denied, the request times out, or
-the API is unsupported, the section keeps that default ranking and
-shows a short note ("Không lấy được vị trí — danh sách đang xếp theo
-đánh giá và giá."); the visitor can also turn location off again
-("Tắt vị trí") to return to the default order.
+without JavaScript; while the native prompt is pending, that
+default-ranked grid renders with no extra UI (no spinner, no button).
+If permission is granted, the grid re-ranks with distances and one
+plain-text status line appears above it ("Đang xếp theo vị trí của
+bạn — …"). If permission is denied, the request times out, or the API
+is unsupported, the section keeps the default ranking and shows one
+plain-text note ("Không lấy được vị trí — danh sách đang xếp theo
+đánh giá và giá."). Neither line carries any action — no retry and
+no "turn off location" control.
 
 ## Internationalization (i18n)
 
