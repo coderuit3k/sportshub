@@ -92,3 +92,30 @@ banner with the sport emoji instead — implemented in
 `src/components/VenueImage.tsx`, so a frame never renders broken or
 empty. The pixel-level guard is `tests/e2e/venue-images.spec.ts`: every
 card and hero must render with `naturalWidth > 0` and a real height.
+
+## Geolocation ranking
+
+The homepage "Sân nổi bật" (featured venues) section
+(`src/components/FeaturedVenues.tsx`) ranks venues by, in strict
+priority order:
+
+1. **star rating** (`ratingAvg`, descending)
+2. **distance** from the visitor's position (ascending)
+3. **price** (`minPrice`, ascending)
+
+The pure ranking logic lives in `src/lib/geo/rank.ts` (`haversineKm`,
+`rankVenues`, `formatDistance`; unit tests in `tests/geo-rank.test.ts`,
+browser coverage in `tests/e2e/geolocation.spec.ts`). Venues without
+coordinates count as infinitely far, venues without a price as
+infinitely expensive; a full tie keeps the incoming order (stable sort).
+
+Privacy: the position comes from the browser Geolocation API, only
+after the visitor clicks "Dùng vị trí của tôi", and is processed
+**entirely on the client** — coordinates are never sent to the server,
+stored, or logged. The initial server render has no position, so it
+ranks by rating → price and the full cards are present in the HTML
+without JavaScript. If permission is denied, the request times out, or
+the API is unsupported, the section keeps that default ranking and
+shows a short note ("Không lấy được vị trí — danh sách đang xếp theo
+đánh giá và giá."); the visitor can also turn location off again
+("Tắt vị trí") to return to the default order.

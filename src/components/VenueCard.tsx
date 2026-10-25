@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPin, Star, Heart } from "lucide-react";
 import { formatVND } from "@/lib/booking/logic";
+import { formatDistance } from "@/lib/geo/rank";
 import VenueImage from "@/components/VenueImage";
 
 export interface VenueCardData {
@@ -8,6 +9,8 @@ export interface VenueCardData {
   ratingAvg: number; ratingCount: number; beginnerFriendly: boolean; familyFriendly: boolean;
   minPrice: number | null; sports: string[]; primarySportSlug?: string | null;
   isFavorite?: boolean;
+  /** Straight-line distance from the visitor's position, when known (geolocation ranking). */
+  distanceKm?: number | null;
 }
 export default function VenueCard({ v }: { v: VenueCardData }) {
   return (
@@ -28,6 +31,9 @@ export default function VenueCard({ v }: { v: VenueCardData }) {
             ~50% aborted RSC navigations against the local SQLite stack. */}
         <h3 className="font-bold leading-snug"><Link prefetch={false} href={`/venues/${v.slug}`} className="hover:text-primary">{v.name}</Link></h3>
         <p className="flex items-center gap-1 text-sm text-slate-500"><MapPin className="h-4 w-4" /> {v.district} — {v.address}</p>
+        {v.distanceKm != null && (
+          <p className="flex items-center gap-1 text-sm font-medium text-primary"><MapPin className="h-4 w-4" /> Cách bạn {formatDistance(v.distanceKm)}</p>
+        )}
         <p className="flex items-center gap-1 text-sm">
           <Star className="h-4 w-4 fill-accent text-accent" />
           <strong>{v.ratingAvg > 0 ? v.ratingAvg.toFixed(1) : "Mới"}</strong>

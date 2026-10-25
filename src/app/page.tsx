@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import VenueCard from "@/components/VenueCard";
+import FeaturedVenues from "@/components/FeaturedVenues";
 import SportIcon from "@/components/SportIcon";
 import { getCurrentUser } from "@/lib/auth";
 import { Search, Users } from "lucide-react";
@@ -30,6 +30,7 @@ export default async function HomePage() {
     ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly,
     minPrice: v.facilities.flatMap((f) => f.priceRules.map((r) => r.pricePerHour)).sort((a, b) => a - b)[0] ?? null,
     sports: v.sports.map((s) => s.sport.name), primarySportSlug: v.sports[0]?.sport.slug ?? null, isFavorite: favIds.includes(v.id),
+    latitude: v.latitude, longitude: v.longitude,
   });
   return (
     <div className="space-y-12">
@@ -58,9 +59,8 @@ export default async function HomePage() {
       </section>
 
       <section>
-        <div className="mb-4 flex items-end justify-between"><h2 className="text-2xl font-bold">Sân được đề xuất</h2><Link className="font-semibold text-primary" href="/venues">Xem tất cả →</Link></div>
-        {venues.length === 0 ? <p className="card p-6 text-slate-500">Chưa có dữ liệu sân — hãy chạy seed (npm run db:seed).</p>
-          : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{venues.map((v) => <VenueCard key={v.id} v={toCard(v)} />)}</div>}
+        <div className="mb-4 flex items-end justify-between"><h2 className="text-2xl font-bold">Sân nổi bật</h2><Link className="font-semibold text-primary" href="/venues">Xem tất cả →</Link></div>
+        <FeaturedVenues venues={venues.map(toCard)} />
       </section>
 
       <section>
