@@ -72,7 +72,7 @@ vi.mock("@upstash/redis", () => {
   return { Redis: FakeRedis };
 });
 
-import { createRateLimiter, rateLimitBackendKind, rateLimitHeaders, resolveUpstashCredentials } from "@/lib/rate-limit";
+import { createRateLimiter, rateLimitBackendKind, resolveUpstashCredentials } from "@/lib/rate-limit";
 import { Redis } from "@upstash/redis";
 
 const FakeRedis = Redis as unknown as {
@@ -262,39 +262,6 @@ describe("SharedRateLimiter — Redis backend (fake @upstash/redis)", () => {
       FakeRedis.failMode = false;
       await lim.check("other");
       expect(lim.diagnostics()).toEqual({ configured: "upstash", degradedLastCall: false });
-    } finally {
-      error.mockRestore();
-    }
-  });
-});
-
-describe("rateLimitHeaders (TEMP-DIAGNOSTIC)", () => {
-  it("reports the memory backend for a memory-configured limiter", async () => {
-    const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:hdr-memory" }, noEnv());
-    const decision = await lim.consume("k");
-    expect(rateLimitHeaders(lim, decision)).toEqual({
-      "X-RateLimit-Backend": "memory",
-      "X-RateLimit-Remaining": "1",
-    });
-  });
-
-  it("reports upstash while Redis answers", async () => {
-    const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:hdr-upstash" }, KV_ENV);
-    const decision = await lim.consume("k");
-    expect(rateLimitHeaders(lim, decision)).toEqual({
-      "X-RateLimit-Backend": "upstash",
-      "X-RateLimit-Remaining": "1",
-    });
-  });
-
-  it("reports upstash-degraded after a Redis error", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:hdr-degraded" }, KV_ENV);
-      await lim.consume("k"); // healthy — Redis answers
-      FakeRedis.failMode = true;
-      const decision = await lim.consume("k"); // degraded — memory fallback answers
-      expect(rateLimitHeaders(lim, decision)["X-RateLimit-Backend"]).toBe("upstash-degraded");
     } finally {
       error.mockRestore();
     }

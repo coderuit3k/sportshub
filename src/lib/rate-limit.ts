@@ -402,29 +402,6 @@ export function createRateLimiter(config: RateLimiterConfig, env?: NodeJS.Proces
 }
 
 /**
- * TEMP-DIAGNOSTIC: remove after production verification.
- * Headers exposing which backend served a rate-limit gate and what the
- * gate decided, so the Redis path can be proven live from the outside
- * (response inspection) instead of by inference:
- * - `X-RateLimit-Backend`: `upstash` | `memory` | `upstash-degraded`
- *   (the last when the gate's most recent Redis call errored and the
- *   in-memory fallback answered).
- * - `X-RateLimit-Remaining`: the gate decision's remaining count.
- * Routes merge these into their gated responses (429 + rejections).
- */
-export function rateLimitHeaders(
-  limiter: SharedRateLimiter,
-  decision: RateLimitDecision,
-): Record<string, string> {
-  const { configured, degradedLastCall } = limiter.diagnostics();
-  return {
-    "X-RateLimit-Backend":
-      configured === "memory" ? "memory" : degradedLastCall ? "upstash-degraded" : "upstash",
-    "X-RateLimit-Remaining": String(decision.remaining),
-  };
-}
-
-/**
  * Shared limiters (module singletons so in-memory counters survive across
  * requests handled by the same warm instance; with Upstash configured the
  * counters are global in Redis).

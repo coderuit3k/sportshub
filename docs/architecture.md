@@ -273,13 +273,16 @@ backends, chosen per limiter at first use:
 (`console.error("[rate-limit] redis error", …)`, message only) and
 that call degrades to the in-memory backend instead of failing the
 request — availability over strictness, but never silently. Each
-limiter exposes `diagnostics()` → `{ configured, degradedLastCall }`,
-and — TEMPORARY, to be removed after production verification — the
-login, register, and booking-create routes attach
-`X-RateLimit-Backend` (`upstash` | `memory` | `upstash-degraded`) and
-`X-RateLimit-Remaining` headers to their gated responses (429s and
-the rejections returned after the gate), so the live backend can be
-proven from response inspection alone.
+limiter exposes `diagnostics()` → `{ configured, degradedLastCall }`
+for tests and internal inspection.
+
+**Production verification (2026-10-25): passed.** With the shared
+Redis backend live, the per-user booking limiter was driven to its
+quota from production traffic across serverless instances: the
+remaining counter decremented globally (30 → 0) and the 31st attempt
+returned 429 — proof the counters are global in Redis rather than
+per-instance memory. (Temporary diagnostic response headers used to
+obtain this proof were removed after verification.)
 
 Quotas (unchanged): login 10 **failed** attempts / 10 min per IP+email
 (reset on success), register 5 / hour per IP, booking 30 / 10 min
