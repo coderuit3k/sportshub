@@ -51,7 +51,7 @@ vi.mock("@upstash/ratelimit", () => {
   return { Ratelimit: FakeRatelimit };
 });
 
-import { createRateLimiter, rateLimitBackendKind } from "@/lib/rate-limit";
+import { createRateLimiter, rateLimitBackendKind, resolveUpstashCredentials } from "@/lib/rate-limit";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
@@ -61,24 +61,39 @@ const FakeRatelimit = Ratelimit as unknown as {
 };
 const FakeRedis = Redis as unknown as { instances: Array<{ config: { url: string; token: string } }> };
 
-const UPSTASH_ENV = {
-  NODE_ENV: "test",
-  UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-  UPSTASH_REDIS_REST_TOKEN: "fake-token",
-} as NodeJS.ProcessEnv;
-
 beforeEach(() => {
   FakeRatelimit.instances.length = 0;
   FakeRedis.instances.length = 0;
   FakeRatelimit.slidingWindow.mockClear();
 });
 
-describe("rateLimitBackendKind", () => {
-  it("selects upstash only when BOTH env vars are set", () => {
-    expect(rateLimitBackendKind(UPSTASH_ENV)).toBe("upstash");
-    expect(rateLimitBackendKind({ UPSTASH_REDIS_REST_URL: "https://x" } as unknown as NodeJS.ProcessEnv)).toBe("memory");
-    expect(rateLimitBackendKind({ UPSTASH_REDIS_REST_TOKEN: "t" } as unknown as NodeJS.ProcessEnv)).toBe("memory");
-    expect(rateLimitBackendKind({} as unknown as NodeJS.ProcessEnv)).toBe("memory");
+const KV_ENV = {
+  NODE_ENV: "test",
+  KV_REST_API_URL: "https://fake-kv.vercel.app",
+  KV_REST_API_TOKEN: "kv-token",
+} as NodeJS.ProcessEnv;
+
+const asEnv = (partial: Record<string, string>) => partial as unknown as NodeJS.ProcessEnv;
+
+describe("rateLimitBackendKind / resolveUpstashCredentials", () => {
+  it("selects upstash when the full KV_* pair is present", () => {
+    expect(rateLimitBackendKind(KV_ENV)).toBe("upstash");
+    expect(resolveUpstashCredentials(KV_ENV)).toEqual({
+      url: "https://fake-kv.vercel.app",
+      token: "kv-token",
+    });
+  });
+
+  it("falls back to memory when only one half of the KV pair is present", () => {
+    expect(rateLimitBackendKind(asEnv({ KV_REST_API_URL: "https://x" }))).toBe("memory");
+    expect(rateLimitBackendKind(asEnv({ KV_REST_API_TOKEN: "t" }))).toBe("memory");
+    expect(resolveUpstashCredentials(asEnv({ KV_REST_API_URL: "https://x" }))).toBeNull();
+    expect(resolveUpstashCredentials(asEnv({ KV_REST_API_TOKEN: "t" }))).toBeNull();
+  });
+
+  it("falls back to memory when nothing is set", () => {
+    expect(rateLimitBackendKind(asEnv({}))).toBe("memory");
+    expect(resolveUpstashCredentials(asEnv({}))).toBeNull();
   });
 });
 
@@ -121,18 +136,25 @@ describe("SharedRateLimiter — in-memory fallback (no env)", () => {
 
 describe("SharedRateLimiter — Upstash backend (mocked)", () => {
   it("builds a Ratelimit with the quota, window and prefix on first use", async () => {
-    const lim = createRateLimiter({ limit: 10, windowMs: 10 * 60_000, prefix: "sportshub:login" }, UPSTASH_ENV);
-    expect(lim.backendKind).toBe("upstash");
-    await lim.check("login:1.2.3.4:a@b.c");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const lim = createRateLimiter({ limit: 10, windowMs: 10 * 60_000, prefix: "sportshub:login" }, KV_ENV);
+      expect(lim.backendKind).toBe("upstash");
+      await lim.check("login:1.2.3.4:a@b.c");
+      // First Upstash resolution in this file: the one-time backend log fires here.
+      expect(info).toHaveBeenCalledWith("[rate-limit] backend: upstash");
+    } finally {
+      info.mockRestore();
+    }
     expect(FakeRedis.instances).toHaveLength(1);
-    expect(FakeRedis.instances[0].config).toEqual({ url: "https://fake.upstash.io", token: "fake-token" });
+    expect(FakeRedis.instances[0].config).toEqual({ url: "https://fake-kv.vercel.app", token: "kv-token" });
     expect(FakeRatelimit.slidingWindow).toHaveBeenCalledWith(10, "10 m");
     expect(FakeRatelimit.instances).toHaveLength(1);
     expect(FakeRatelimit.instances[0].config.prefix).toBe("sportshub:login");
   });
 
   it("consume maps the Upstash decision (allowed → denied at the quota)", async () => {
-    const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:upstash-consume" }, UPSTASH_ENV);
+    const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:upstash-consume" }, KV_ENV);
     expect((await lim.consume("k")).allowed).toBe(true);
     const second = await lim.consume("k");
     expect(second.allowed).toBe(true);
@@ -145,7 +167,7 @@ describe("SharedRateLimiter — Upstash backend (mocked)", () => {
   });
 
   it("check() peeks without consuming; record() consumes; reset() clears", async () => {
-    const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:upstash-login" }, UPSTASH_ENV);
+    const lim = createRateLimiter({ limit: 2, windowMs: 60_000, prefix: "t:upstash-login" }, KV_ENV);
     // Peeking never eats quota.
     expect((await lim.check("u")).allowed).toBe(true);
     expect((await lim.check("u")).remaining).toBe(2);
@@ -159,8 +181,17 @@ describe("SharedRateLimiter — Upstash backend (mocked)", () => {
     expect((await lim.check("u")).remaining).toBe(2);
   });
 
+  it("uses the KV_* credentials end to end", async () => {
+    const lim = createRateLimiter({ limit: 3, windowMs: 60_000, prefix: "t:kv" }, KV_ENV);
+    expect(lim.backendKind).toBe("upstash");
+    expect((await lim.consume("k")).allowed).toBe(true);
+    expect(FakeRedis.instances).toHaveLength(1);
+    expect(FakeRedis.instances[0].config).toEqual({ url: "https://fake-kv.vercel.app", token: "kv-token" });
+  });
+
+
   it("degrades to the in-memory backend when Upstash errors", async () => {
-    const lim = createRateLimiter({ limit: 1, windowMs: 60_000, prefix: "t:upstash-down" }, UPSTASH_ENV);
+    const lim = createRateLimiter({ limit: 1, windowMs: 60_000, prefix: "t:upstash-down" }, KV_ENV);
     // Prime the backend, then break the fake client.
     await lim.check("k");
     const instance = FakeRatelimit.instances[0] as unknown as { limit: () => Promise<never> };

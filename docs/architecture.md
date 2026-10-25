@@ -246,8 +246,11 @@ matrix before relying on that.
 One async surface — `check` / `record` / `consume` / `reset` — with two
 backends, chosen per limiter at first use:
 
-- **Upstash (shared/global)** when `UPSTASH_REDIS_REST_URL` and
-  `UPSTASH_REDIS_REST_TOKEN` are set: `@upstash/ratelimit`
+- **Upstash (shared/global)** when `KV_REST_API_URL` and
+  `KV_REST_API_TOKEN` are set — the variable names injected by the
+  Vercel Marketplace Upstash/Redis integration (Vercel KV speaks the
+  Upstash REST protocol, so `@upstash/redis` connects directly):
+  `@upstash/ratelimit`
   sliding-window counters in Redis, enforced across all instances.
   Semantics map 1:1 (`check` → `getRemaining()` peek, `record` →
   `limit()`, `reset` → `resetUsedTokens()`). One delta: Upstash's
@@ -266,14 +269,15 @@ per user.
 
 **Activating Upstash (production):**
 
-1. Create a Redis database at [console.upstash.com](https://console.upstash.com)
-   (a regional database near the deployment region is fine).
-2. In Vercel → project → Settings → Environment Variables, set
-   `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from the
-   database's REST credentials (Production scope).
+1. Add the Upstash/Redis integration from the Vercel Marketplace
+   (Storage tab) to the project — it provisions the database and
+   injects the credentials automatically.
+2. The integration sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+   (Production scope) — these are the variables the code reads.
 3. Redeploy. No code change is needed — the limiters pick the backend
-   up from the environment. Until then, the in-memory fallback keeps
-   working exactly as before.
+   up from the environment, and the startup log line
+   `[rate-limit] backend: upstash` confirms it in the deployment logs.
+   Until then, the in-memory fallback keeps working exactly as before.
 
 ### Remaining limits
 

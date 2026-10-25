@@ -6,10 +6,12 @@ import { Redis } from "@upstash/redis";
  * Sliding-window rate limiting with two interchangeable backends behind one
  * async surface (`check` / `record` / `consume` / `reset`):
  *
- * - **Upstash** (shared, global) — used when `UPSTASH_REDIS_REST_URL` and
- *   `UPSTASH_REDIS_REST_TOKEN` are set. Counters live in Redis, so the quota
- *   is enforced across every serverless instance. Backed by
- *   `@upstash/ratelimit`'s sliding-window algorithm.
+ * - **Upstash** (shared, global) — used when `KV_REST_API_URL` and
+ *   `KV_REST_API_TOKEN` are set (the names injected by the Vercel
+ *   Marketplace Upstash/Redis integration; Vercel KV speaks the Upstash
+ *   REST protocol, so `@upstash/redis` talks to it directly). Counters live
+ *   in Redis, so the quota is enforced across every serverless instance.
+ *   Backed by `@upstash/ratelimit`'s sliding-window algorithm.
  * - **In-memory** (fallback) — the original per-instance `SlidingWindowLimiter`
  *   (module-level Map). Used for local dev and until the Upstash env vars are
  *   provisioned. Honest limitation: on serverless each warm instance keeps its
@@ -110,9 +112,22 @@ export function tooManyRequests(decision: RateLimitDecision): NextResponse {
 
 export type RateLimitBackendKind = "memory" | "upstash";
 
-/** Backend selection: Upstash only when BOTH REST env vars are present. */
+/**
+ * Resolve the Upstash REST credentials from the environment — exactly the
+ * `KV_REST_API_URL` / `KV_REST_API_TOKEN` pair the Vercel Marketplace
+ * integration injects. Returns null unless BOTH resolve to non-empty values.
+ */
+export function resolveUpstashCredentials(
+  env: NodeJS.ProcessEnv = process.env,
+): { url: string; token: string } | null {
+  const url = env.KV_REST_API_URL;
+  const token = env.KV_REST_API_TOKEN;
+  return url && token ? { url, token } : null;
+}
+
+/** Backend selection: Upstash only when a full REST url/token pair resolves. */
 export function rateLimitBackendKind(env: NodeJS.ProcessEnv = process.env): RateLimitBackendKind {
-  return env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN ? "upstash" : "memory";
+  return resolveUpstashCredentials(env) ? "upstash" : "memory";
 }
 
 interface RateLimitBackend {
@@ -244,6 +259,7 @@ export interface RateLimiterConfig {
 }
 
 let warnedAboutMemoryFallback = false;
+let loggedUpstashBackend = false;
 
 /**
  * A rate limiter with async `check` / `record` / `consume` / `reset`.
@@ -265,19 +281,26 @@ export class SharedRateLimiter implements RateLimitBackend {
 
   private get resolved(): RateLimitBackend {
     if (!this.backend) {
-      if (this.backendKind === "upstash") {
+      const credentials = resolveUpstashCredentials(this.env);
+      if (credentials) {
+        if (!loggedUpstashBackend) {
+          loggedUpstashBackend = true;
+          // Info-level proof in production logs of which backend is live.
+          // Never log the credential values themselves.
+          console.info("[rate-limit] backend: upstash");
+        }
         this.backend = new UpstashRateLimitBackend(
           this.config.limit,
           this.config.windowMs,
           this.config.prefix,
-          this.env.UPSTASH_REDIS_REST_URL!,
-          this.env.UPSTASH_REDIS_REST_TOKEN!,
+          credentials.url,
+          credentials.token,
         );
       } else {
         if (this.env.NODE_ENV === "production" && !warnedAboutMemoryFallback) {
           warnedAboutMemoryFallback = true;
           console.warn(
-            "[rate-limit] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set — " +
+            "[rate-limit] KV_REST_API_URL / KV_REST_API_TOKEN are not set — " +
               "falling back to per-instance in-memory rate limiting (not a global quota).",
           );
         }
