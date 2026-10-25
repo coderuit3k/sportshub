@@ -119,13 +119,12 @@ to the outcome. The initial server render has no position, so it
 ranks by rating → price and the full cards are present in the HTML
 without JavaScript; while the native prompt is pending, that
 default-ranked grid renders with no extra UI (no spinner, no button).
-If permission is granted, the grid re-ranks with distances and one
-plain-text status line appears above it ("Đang xếp theo vị trí của
-bạn — …"). If permission is denied, the request times out, or the API
-is unsupported, the section keeps the default ranking and shows one
-plain-text note ("Không lấy được vị trí — danh sách đang xếp theo
-đánh giá và giá."). Neither line carries any action — no retry and
-no "turn off location" control.
+If permission is granted, the grid silently re-ranks with distances
+on the cards. If permission is denied, the request times out, or the
+API is unsupported, the section simply keeps the default ranking.
+Location handling is **fully silent**: no text, banner, or control of
+any kind reports the location state — the section shows only the
+heading and the card grid.
 
 ## Internationalization (i18n)
 

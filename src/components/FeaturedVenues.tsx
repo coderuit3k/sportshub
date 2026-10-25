@@ -16,14 +16,14 @@ import { rankVenues, type UserPosition } from "@/lib/geo/rank";
  * prompt; there is deliberately no in-page button. The position is
  * processed entirely on the client and never sent to the server.
  *
- * - Granted → the grid re-ranks with distances on the cards and one
- *   plain-text status line appears above the grid.
- * - Denied / timeout / unsupported → the default ranking stays and
- *   one plain-text note explains why; the list never breaks.
- * - While the browser prompt is pending, the default-ranked grid
- *   renders with no extra UI (no spinner, no button).
+ * The location handling is fully silent: nothing in this section
+ * reports the location state. Granted → the grid quietly re-ranks
+ * and distance lines appear on the cards. Denied / timeout /
+ * unsupported → the default ranking simply stays. While the browser
+ * prompt is pending, the default-ranked grid renders as-is.
  *
- * All UI copy comes from the `home.featured` message namespace.
+ * The only copy this component renders itself is the empty-grid
+ * message from the `home.featured` namespace (`noData`).
  */
 
 export interface FeaturedVenueData extends VenueCardData {
@@ -31,12 +31,9 @@ export interface FeaturedVenueData extends VenueCardData {
   longitude: number | null;
 }
 
-type GeoStatus = "pending" | "granted" | "error";
-
 export default function FeaturedVenues({ venues }: { venues: FeaturedVenueData[] }) {
   const t = useTranslations("home.featured");
   const [userPos, setUserPos] = useState<UserPosition | null>(null);
-  const [status, setStatus] = useState<GeoStatus>("pending");
   const requestedRef = useRef(false);
 
   useEffect(() => {
@@ -45,17 +42,13 @@ export default function FeaturedVenues({ venues }: { venues: FeaturedVenueData[]
     if (requestedRef.current) return;
     requestedRef.current = true;
 
-    if (!("geolocation" in navigator)) {
-      setStatus("error");
-      return;
-    }
+    if (!("geolocation" in navigator)) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setStatus("granted");
       },
       () => {
-        setStatus("error");
+        // Denied / timed out: stay silent — the default ranking stays.
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
@@ -65,16 +58,6 @@ export default function FeaturedVenues({ venues }: { venues: FeaturedVenueData[]
 
   return (
     <div>
-      {status === "granted" && (
-        <p className="mb-4 text-sm text-slate-600" role="status">
-          {t("rankedStatus")}
-        </p>
-      )}
-      {status === "error" && (
-        <p className="mb-4 text-sm font-medium text-amber-600" role="status">
-          {t("locationError")}
-        </p>
-      )}
       {ranked.length === 0 ? (
         <p className="card p-6 text-slate-500">{t("noData")}</p>
       ) : (

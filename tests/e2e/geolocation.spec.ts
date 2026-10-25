@@ -3,11 +3,12 @@ import { test, expect, type Page } from "@playwright/test";
 /**
  * Geolocation ranking for the homepage "Sân nổi bật" section.
  *
- * There is NO in-page locate button: on mount the component calls the
- * Geolocation API, the browser/device shows its native permission
- * prompt, and the section reacts to the outcome. Granted → distances
- * appear and the grid re-ranks; denied → a plain-text note appears and
- * the default ranking stays.
+ * There is NO in-page locate button and NO location-state text of
+ * any kind: on mount the component calls the Geolocation API, the
+ * browser/device shows its native permission prompt, and the section
+ * reacts silently. Granted → distances appear and the grid re-ranks;
+ * denied → nothing changes visually beyond the default ranking
+ * staying (full silence — no status line, no error note).
  *
  * Ranking rules (src/lib/geo/rank.ts): rating desc → distance asc → price asc.
  * All seed venues share the same price rules (min 120.000 đ), so with the
@@ -47,9 +48,10 @@ test.describe("geolocation granted (Thủ Đức)", () => {
     // The old opt-in UI is gone: no locate button anywhere on the page.
     await expect(page.getByRole("button", { name: "Dùng vị trí của tôi" })).toHaveCount(0);
 
-    // Without clicking anything, the granted position re-ranks the grid:
-    // the status line confirms the location-based ranking is active.
-    await expect(section.getByText("Đang xếp theo vị trí của bạn")).toBeVisible();
+    // Without clicking anything, the granted position re-ranks the
+    // grid — fully silently: no status line about the location state.
+    await expect(section.getByText("Đang xếp theo vị trí của bạn")).toHaveCount(0);
+    await expect(section.getByText("Không lấy được vị trí")).toHaveCount(0);
 
     // Distances appear on the cards (first card carries one).
     const firstCard = section.locator("article").first();
@@ -69,7 +71,7 @@ test.describe("geolocation granted (Thủ Đức)", () => {
 });
 
 test.describe("geolocation denied", () => {
-  test("shows the graceful note on load and keeps the default ranking visible", async ({ page }) => {
+  test("stays fully silent on load and keeps the default ranking visible", async ({ page }) => {
     // Deterministically simulate a denied permission: the browser calls
     // the error callback (code 1) instead of ever returning a position.
     await page.addInitScript(() => {
@@ -86,11 +88,11 @@ test.describe("geolocation denied", () => {
     const section = featuredSection(page);
     await expect(section.locator("article").first()).toBeVisible();
 
-    // No locate button here either — the note appears on its own.
+    // No locate button here either — and no location-state text at
+    // all: neither the error note nor the granted status line renders.
     await expect(page.getByRole("button", { name: "Dùng vị trí của tôi" })).toHaveCount(0);
-    await expect(
-      section.getByText("Không lấy được vị trí — danh sách đang xếp theo đánh giá và giá."),
-    ).toBeVisible();
+    await expect(section.getByText("Không lấy được vị trí")).toHaveCount(0);
+    await expect(section.getByText("Đang xếp theo vị trí của bạn")).toHaveCount(0);
 
     // The list is unharmed: all 6 cards visible, still in the default
     // rating → price order (seed prices are identical, so rating decides,

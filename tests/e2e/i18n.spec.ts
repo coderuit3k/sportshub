@@ -15,8 +15,9 @@ async function pickLanguage(page: import("@playwright/test").Page, switcherLabel
 
 test("language switcher: vi default → en persists → back to vi", async ({ page }) => {
   // FeaturedVenues asks the Geolocation API on mount (no in-page
-  // button); stub a deterministic denial so the plain-text error note
-  // is what renders — in whichever locale is active.
+  // button) and reacts fully silently — no location-state text in
+  // any locale. Stub a deterministic denial so the flow below never
+  // depends on the runner's real permission state.
   await page.addInitScript(() => {
     const denied = {
       getCurrentPosition: (_success: unknown, error: (e: unknown) => void) =>
@@ -40,12 +41,12 @@ test("language switcher: vi default → en persists → back to vi", async ({ pa
   await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Featured venues" })).toBeVisible();
   await expect(page.getByText("discover venues, book courts")).toBeVisible();
-  // No locate button exists anymore; with geolocation denied, the
-  // featured section's plain-text note renders in English instead.
+  // No locate button exists anymore, and location handling is fully
+  // silent: with geolocation denied, neither the English error note
+  // nor the English status line renders anywhere on the page.
   await expect(page.getByRole("button", { name: "Use my location" })).toHaveCount(0);
-  await expect(
-    page.getByText("Couldn't get your location — the list is ranked by rating and price."),
-  ).toBeVisible();
+  await expect(page.getByText("Couldn't get your location")).toHaveCount(0);
+  await expect(page.getByText("Ranked by your location")).toHaveCount(0);
 
   // Persists across a full reload (cookie, not just client state).
   await page.reload();
