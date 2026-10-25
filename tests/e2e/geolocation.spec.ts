@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Geolocation ranking for the homepage "Sân nổi bật" section.
@@ -10,28 +10,49 @@ import { test, expect, type Page } from "@playwright/test";
  * denied → nothing changes visually beyond the default ranking
  * staying (full silence — no status line, no error note).
  *
- * Ranking rules (src/lib/geo/rank.ts): rating desc → distance asc → price asc.
- * All seed venues share the same price rules (min 120.000 đ), so with the
- * browser positioned in Thủ Đức (10.8500, 106.7550 — ~47 m from Smash
- * Arena) the expected order is decided by rating, with the 4.6★ tie
- * between the two Quận 7 venues broken by distance:
- *   Smash 4.9★ (~0,05 km) → Riverside 4.8★ (~9,3 km) → PickleHub 4.7★
- *   (~7,3 km) → Football Q7 4.6★ (~13,3 km) → Aqua Q7 4.6★ (~14,2 km)
- *   → Hoops 4.5★ (~1,2 km — nearest after Smash, but lowest rated).
- * The same order is also the default (rating → price) order because the
- * seed prices are identical, which the denied test relies on.
+ * Ranking rules (src/lib/geo/rank.ts): rating desc → distance asc →
+ * price asc. The featured grid holds the top 6 of a 180-venue catalog,
+ * so the exact names are data-dependent; these specs assert the
+ * RENDERED INVARIANTS of the ranking instead of a hardcoded order:
+ *   - exactly 6 featured cards;
+ *   - displayed ratings are non-increasing down the grid;
+ *   - granted: every card shows a distance line, and between adjacent
+ *     cards with equal displayed ratings the displayed distances are
+ *     non-decreasing (display rounding is monotonic, so the rendered
+ *     values preserve the underlying order);
+ *   - denied: no distance lines at all.
  */
-const EXPECTED_ORDER = [
-  "CLB Cầu Lông Smash Arena Thủ Đức",
-  "Riverside Tennis Quận 1",
-  "PickleHub Bình Thạnh",
-  "Sân Bóng Mini Sài Gòn Quận 7",
-  "Aqua Pool Quận 7",
-  "Hoops Center Thủ Đức",
-];
 
 function featuredSection(page: Page) {
   return page.locator("section", { has: page.getByRole("heading", { name: "Sân nổi bật" }) });
+}
+
+/** Rating shown on a card: the <strong> next to the star icon ("4.9"). */
+async function cardRating(card: Locator): Promise<number> {
+  const text = (await card.locator("strong").first().textContent()) ?? "";
+  const value = Number.parseFloat(text.trim());
+  if (Number.isNaN(value)) throw new Error(`card rating is not numeric: "${text}"`);
+  return value;
+}
+
+/** Distance shown on a card, in km ("47 m" → 0.047, "2,3 km" → 2.3). */
+async function cardDistanceKm(card: Locator): Promise<number> {
+  const text = (await card.getByText(/Cách bạn/).first().textContent()) ?? "";
+  const m = text.match(/([\d]+(?:[.,]\d+)?)\s*(km|m)\b/);
+  if (!m) throw new Error(`card distance not parseable: "${text}"`);
+  const value = Number.parseFloat(m[1].replace(",", "."));
+  return m[2] === "km" ? value : value / 1000;
+}
+
+async function expectRatingOrder(cards: Locator): Promise<number[]> {
+  const ratings: number[] = [];
+  const n = await cards.count();
+  for (let i = 0; i < n; i++) ratings.push(await cardRating(cards.nth(i)));
+  for (let i = 1; i < ratings.length; i++) {
+    expect(ratings[i], `ratings must be non-increasing (got ${ratings.join(", ")})`)
+      .toBeLessThanOrEqual(ratings[i - 1]);
+  }
+  return ratings;
 }
 
 test.describe("geolocation granted (Thủ Đức)", () => {
@@ -53,20 +74,24 @@ test.describe("geolocation granted (Thủ Đức)", () => {
     await expect(section.getByText("Đang xếp theo vị trí của bạn")).toHaveCount(0);
     await expect(section.getByText("Không lấy được vị trí")).toHaveCount(0);
 
-    // Distances appear on the cards (first card carries one).
-    const firstCard = section.locator("article").first();
-    await expect(firstCard.getByText(/Cách bạn \d+([.,]\d+)?\s*(km|m)/)).toBeVisible();
+    // Wait until the grant has been applied: a distance line on every
+    // one of the 6 featured cards (before that, the grid is still in
+    // the server-rendered default order and distances are absent).
+    await expect(section.locator("article")).toHaveCount(6);
+    await expect.poll(async () => section.getByText(/Cách bạn/).count(), { timeout: 15_000 }).toBe(6);
 
-    // Smash Arena is ~47 m from the fake position → metre formatting.
-    await expect(firstCard.getByText(/Cách bạn \d+ m/)).toBeVisible();
-
-    // Visible order equals the ranking rules applied to the seed data.
-    const names = (await section.locator("article h3").allTextContents()).map((t) => t.trim());
-    expect(names).toEqual(EXPECTED_ORDER);
-
-    // Every card shows a distance; Hoops (last, lowest rated) shows ~1,2 km.
-    await expect(section.getByText(/Cách bạn/)).toHaveCount(6);
-    await expect(section.locator("article").last().getByText("Cách bạn 1,2 km")).toBeVisible();
+    // Rendered ranking invariants: ratings non-increasing, and where
+    // adjacent ratings tie, distances non-decreasing.
+    const cards = section.locator("article");
+    const ratings = await expectRatingOrder(cards);
+    for (let i = 1; i < ratings.length; i++) {
+      if (ratings[i] === ratings[i - 1]) {
+        const prev = await cardDistanceKm(cards.nth(i - 1));
+        const curr = await cardDistanceKm(cards.nth(i));
+        expect(curr, `equal ratings ${ratings[i]}: distances must be non-decreasing (${prev} → ${curr})`)
+          .toBeGreaterThanOrEqual(prev);
+      }
+    }
   });
 });
 
@@ -94,12 +119,11 @@ test.describe("geolocation denied", () => {
     await expect(section.getByText("Không lấy được vị trí")).toHaveCount(0);
     await expect(section.getByText("Đang xếp theo vị trí của bạn")).toHaveCount(0);
 
-    // The list is unharmed: all 6 cards visible, still in the default
-    // rating → price order (seed prices are identical, so rating decides,
-    // and the 4.6★ tie keeps seed order: Football Q7 before Aqua Q7).
+    // The list is unharmed: all 6 featured cards visible, still in the
+    // default ranking — displayed ratings non-increasing — and no
+    // distance lines anywhere.
     await expect(section.locator("article")).toHaveCount(6);
-    const names = (await section.locator("article h3").allTextContents()).map((t) => t.trim());
-    expect(names).toEqual(EXPECTED_ORDER);
+    await expectRatingOrder(section.locator("article"));
     await expect(section.getByText(/Cách bạn/)).toHaveCount(0);
   });
 });

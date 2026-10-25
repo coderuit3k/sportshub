@@ -55,44 +55,66 @@ const VENUE_PHOTOS: Record<string, string> = {
 
 /**
  * Sport-level stock fallback (Unsplash / Pexels CDN links), keyed by
- * sport slug. Two verified photos per sport; the venue slug hash picks
+ * sport slug. Four verified photos per sport; the venue slug hash picks
  * one deterministically.
  */
 const VENUE_IMAGES: Record<string, string[]> = {
   // Cầu lông — shuttlecock in flight, close-up against a dark court
-  // background; shuttlecock resting on a green court line, top-down.
+  // background; shuttlecock resting on a green court line, top-down;
+  // two players with rackets on a red indoor court; a player about to
+  // serve inside a badminton hall.
   "cau-long": [
     "https://images.unsplash.com/photo-1614058585449-0aceebe022cc?auto=format&fit=crop&w=1200&q=80",
     "https://images.pexels.com/photos/7438732/pexels-photo-7438732.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/8007162/pexels-photo-8007162.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/8007405/pexels-photo-8007405.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
   // Pickleball — empty blue/green courts seen from the net post; aerial
-  // view of a pickleball complex with games in progress.
+  // view of a pickleball complex with games in progress; match action
+  // at the net on an outdoor court in Vietnam; paddle and ball resting
+  // against the net on a blue court.
   pickleball: [
     "https://images.pexels.com/photos/29820786/pexels-photo-29820786.jpeg?auto=compress&cs=tinysrgb&w=1200",
     "https://images.pexels.com/photos/37143606/pexels-photo-37143606.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/29439337/pexels-photo-29439337.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/17299530/pexels-photo-17299530.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
   // Bóng đá mini — caged artificial-turf mini pitch with floodlights;
-  // outdoor hard-court futsal pitch with a goal.
+  // outdoor hard-court futsal pitch with a goal; a player dribbling on
+  // an outdoor concrete futsal court; an indoor soccer game in a hall.
   "bong-da-mini": [
     "https://images.pexels.com/photos/36681531/pexels-photo-36681531.jpeg?auto=compress&cs=tinysrgb&w=1200",
     "https://images.pexels.com/photos/28271652/pexels-photo-28271652.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/33620335/pexels-photo-33620335.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/34007009/pexels-photo-34007009.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
   // Quần vợt — white lines on a clay tennis court; outdoor hard court
-  // with net, umpire chair and floodlights.
+  // with net, umpire chair and floodlights; a player in action on a
+  // clay court; two players chatting at the net on an outdoor court.
   "quan-vot": [
     "https://images.unsplash.com/photo-1465125672495-63cdc2fa22ed?auto=format&fit=crop&w=1200&q=80",
     "https://images.pexels.com/photos/35564300/pexels-photo-35564300.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/37112832/pexels-photo-37112832.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/8224639/pexels-photo-8224639.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
-  // Bóng rổ — outdoor hoop/backboard against a clear sky; basketball close-up.
+  // Bóng rổ — outdoor hoop/backboard against a clear sky; basketball
+  // close-up; an empty outdoor court with hoop and painted key; a
+  // fenced outdoor court with hoop seen through the chain-link.
   "bong-ro": [
     "https://images.unsplash.com/photo-1494199505258-5f95387f933c?auto=format&fit=crop&w=1200&q=80",
     "https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?auto=format&fit=crop&w=1200&q=80",
+    "https://images.pexels.com/photos/15783797/pexels-photo-15783797.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/19514919/pexels-photo-19514919.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
   // Bơi lội — indoor lap pool with red/blue lane ropes; lane ropes on a
-  // turquoise lap pool, close detail.
+  // turquoise lap pool, close detail; lane ropes across an empty
+  // outdoor competition pool; a swimmer resting at the poolside with
+  // the lanes stretching behind.
   "boi-loi": [
     "https://images.pexels.com/photos/40068492/pexels-photo-40068492.jpeg?auto=compress&cs=tinysrgb&w=1200",
     "https://images.pexels.com/photos/19073612/pexels-photo-19073612.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/9030294/pexels-photo-9030294.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "https://images.pexels.com/photos/8028692/pexels-photo-8028692.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
 };
 

@@ -7,10 +7,15 @@ async function imgInfo(img: any) {
   });
 }
 
-test("venue photos actually render (pixels, not just HTML)", async ({ page }) => {
+test("venue photos actually render on /venues page 1 (pixels, not just HTML)", async ({ page }) => {
+  // 12 card photos load through the Next image optimizer from remote
+  // CDNs — give the whole loop more room than the 60 s suite default.
+  test.setTimeout(180_000);
   await page.goto("/venues");
   const cards = page.locator("article");
   await expect(cards.first()).toBeVisible();
+  // Server-side pagination: exactly one page of 12 cards.
+  await expect(cards).toHaveCount(12);
   const n = await cards.count();
   console.log("cards:", n);
   for (let i = 0; i < n; i++) {
@@ -19,8 +24,13 @@ test("venue photos actually render (pixels, not just HTML)", async ({ page }) =>
     await expect.poll(async () => (await imgInfo(img)).nw, { timeout: 30000 }).toBeGreaterThan(0);
     const info = await imgInfo(img);
     console.log(`card ${i}:`, JSON.stringify(info));
-    expect(info.h).toBeGreaterThanOrEqual(100);
+    // Card banner is h-40 = 160 px tall; a collapsed/zero-height box is
+    // the regression this spec exists to catch.
+    expect(info.h).toBeGreaterThanOrEqual(158);
   }
+});
+
+test("venue detail hero photo actually renders", async ({ page }) => {
   await page.goto("/venues/pickle-hub-binh-thanh");
   const hero = page.locator("img").first();
   await expect(hero).toBeVisible();

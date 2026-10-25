@@ -67,8 +67,16 @@ function minPriceOf(facilities: { priceRules: { pricePerHour: number }[] }[]): n
 
 export const getCachedSports = unstable_cache(
   async (): Promise<PublicSport[]> => {
-    const sports = await prisma.sport.findMany({ include: { _count: { select: { venues: true } } } });
-    return sports.map((s) => ({ id: s.id, slug: s.slug, name: s.name, venueCount: s._count.venues }));
+    const sports = await prisma.sport.findMany();
+    // Public counts: APPROVED venues only (the pending-approval venue
+    // must not inflate the homepage grid numbers).
+    const counts = await prisma.venueSport.groupBy({
+      by: ["sportId"],
+      where: { venue: { status: "APPROVED" } },
+      _count: { _all: true },
+    });
+    const bySportId = new Map(counts.map((c) => [c.sportId, c._count._all]));
+    return sports.map((s) => ({ id: s.id, slug: s.slug, name: s.name, venueCount: bySportId.get(s.id) ?? 0 }));
   },
   ["public:sports"],
   { revalidate: 300, tags: [VENUES_TAG] },

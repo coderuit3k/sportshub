@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { ensureVenueCatalog } from "./catalog-store";
 
 const prisma = new PrismaClient();
 
@@ -106,6 +107,12 @@ async function main() {
       });
     }
   }
+
+  // Generated catalog (prisma/venue-catalog.ts): +29 venues per sport,
+  // inserted through the same ensure-step production uses, so a fresh
+  // local DB ends up with exactly 30 APPROVED venues per sport.
+  const catalog = await ensureVenueCatalog(prisma);
+  console.log(`Catalog venues: +${catalog.inserted} inserted, ${catalog.skipped} already present`);
 
   // Reviews (marked seed)
   const reviewTexts = ["Sân đẹp, đèn sáng, đặt rất nhanh.", "Mặt sân tốt, nhân viên thân thiện.", "Giá hợp lý giờ thấp điểm."];

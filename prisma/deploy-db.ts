@@ -13,6 +13,11 @@
  *    the old copy (venue names/addresses/descriptions, review comments,
  *    session descriptions, booking notifications). Exact-match replacements,
  *    only rows that actually change are updated — a no-op once scrubbed.
+ * 5. Tops the venue catalog up to the generated catalog
+ *    (prisma/venue-catalog.ts — 29 extra venues per sport, 30 APPROVED
+ *    per sport in total): inserts only venues whose slug is missing,
+ *    never modifies existing rows. NOT gated on user count — it runs on
+ *    every build and is a no-op once the catalog is complete.
  *
  * Uses DATABASE_URL from the environment; the build command points it at
  * DATABASE_URL_UNPOOLED for DDL reliability (Neon pooled endpoints are not
@@ -20,6 +25,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
+import { ensureVenueCatalog } from "./catalog-store";
 
 const prisma = new PrismaClient();
 
@@ -159,6 +165,8 @@ async function main(): Promise<void> {
   await seedIfEmpty();
   await backfillVenueCoordinates();
   await scrubDemoWording();
+  const catalog = await ensureVenueCatalog(prisma);
+  console.log(`[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present`);
 }
 
 // Guarded so local verification harnesses can import scrubDemoWording

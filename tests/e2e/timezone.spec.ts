@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsPlayer, openFirstVenue, saturdayDateISO, confirmBookingAndReadStatus } from "./helpers";
+import { loginAsPlayer, saturdayDateISO, confirmBookingAndReadStatus } from "./helpers";
 
 // Regression spec for the production timezone bug: with the server running
 // under a UTC process TZ (as on Vercel), booking "Saturday 14:00" used to be
@@ -12,8 +12,11 @@ test.describe("timezone regression (Asia/Ho_Chi_Minh anchoring)", () => {
     page.on("dialog", (dialog) => dialog.accept()); // window.confirm() on cancel
     await loginAsPlayer(page);
 
-    await page.goto("/venues");
-    await openFirstVenue(page);
+    // Go straight to the flagship badminton venue: its seed price rules
+    // are the ones this spec's 160.000 đ weekend expectation is written
+    // against (catalog venues carry per-sport prices instead, and the
+    // first card on /venues is no longer guaranteed to be a flagship).
+    await page.goto("/venues/smash-arena-thu-duc");
     const widget = page.locator("div.card", { has: page.getByRole("heading", { name: /Đặt sân —/ }) });
     await expect(widget).toBeVisible();
 
