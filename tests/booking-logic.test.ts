@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculatePrice, calculateRefund, overlaps, isValidTransition, canJoinSession, isSessionFull, ruleForHour, isWeekend } from "@/lib/booking/logic";
+import { calculatePrice, calculateRefund, overlaps, isValidTransition, canJoinSession, isSessionFull, ruleForHour, isWeekend, aggregateSlots, type HourlySlot } from "@/lib/booking/logic";
 import { fromWallTime } from "@/lib/time/tz";
 
 const rules = [
@@ -118,5 +118,51 @@ describe("session capacity", () => {
     expect(canJoinSession(6, 6)).toBe(false);
     expect(isSessionFull(6, 6)).toBe(true);
     expect(isSessionFull(3, 6)).toBe(false);
+  });
+});
+
+describe("slot aggregation for multi-hour durations", () => {
+  const row = (hour: number, price: number, over: Partial<HourlySlot> = {}): HourlySlot => {
+    const start = new Date(Date.UTC(2026, 9, 27, hour, 0, 0));
+    return {
+      startAt: start.toISOString(),
+      endAt: new Date(start.getTime() + 3_600_000).toISOString(),
+      startTime: `${String(hour).padStart(2, "0")}:00`,
+      price,
+      available: true,
+      past: false,
+      ...over,
+    };
+  };
+
+  it("total is the per-hour sum across a peak boundary (never an average)", () => {
+    // 16:00 off-peak 120k + 17:00 peak 180k = 300k for a 2-hour start.
+    const hourly = [row(16, 120000), row(17, 180000), row(18, 180000)];
+    const two = aggregateSlots(hourly, 2);
+    expect(two).toHaveLength(2);
+    expect(two[0].price).toBe(300000);
+    expect(two[1].price).toBe(360000);
+    expect(aggregateSlots(hourly, 3)[0].price).toBe(480000);
+    // Group spans from the first hour's start to the last hour's end.
+    expect(two[0].startAt).toBe(hourly[0].startAt);
+    expect(two[0].endAt).toBe(hourly[1].endAt);
+    expect(two[0].startTime).toBe("16:00");
+  });
+
+  it("a start is available only if every covered hour is free", () => {
+    const hourly = [row(10, 100000), row(11, 100000, { available: false }), row(12, 100000)];
+    const two = aggregateSlots(hourly, 2);
+    expect(two.map((s) => s.available)).toEqual([false, false]);
+    const one = aggregateSlots(hourly, 1);
+    expect(one.map((s) => s.available)).toEqual([true, false, true]);
+  });
+
+  it("past propagates from the group's first hour", () => {
+    const hourly = [row(17, 100000, { past: true, available: false }), row(18, 100000), row(19, 100000)];
+    const two = aggregateSlots(hourly, 2);
+    expect(two[0].past).toBe(true); // starts with the past hour
+    expect(two[1].past).toBe(false); // first hour (18:00) is in the future
+    expect(two[0].available).toBe(false);
+    expect(two[1].available).toBe(true);
   });
 });

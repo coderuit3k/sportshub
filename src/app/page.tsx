@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DateField from "@/components/DateField";
 import FeaturedVenues from "@/components/FeaturedVenues";
 import SportIcon from "@/components/SportIcon";
 import { Search, Users } from "lucide-react";
@@ -48,7 +49,7 @@ export default async function HomePage() {
         <form action="/venues" method="get" className="mt-6 grid gap-2 rounded-2xl bg-white p-3 text-ink md:grid-cols-5" role="search">
           <select name="sport" className="input" aria-label={t("searchSportAria")}><option value="">{t("allSports")}</option>{sports.map((s) => <option key={s.id} value={s.slug}>{sportLabel(s.slug, s.name)}</option>)}</select>
           <input name="q" className="input" placeholder={t("searchKeywordPlaceholder")} aria-label={t("searchKeywordAria")} />
-          <input name="date" type="date" className="input" aria-label={t("searchDateAria")} />
+          <DateField name="date" className="input" ariaLabel={t("searchDateAria")} />
           <select name="time" className="input" aria-label={t("searchTimeAria")}><option value="">{t("anyTime")}</option><option value="morning">{t("morning")}</option><option value="afternoon">{t("afternoon")}</option><option value="evening">{t("evening")}</option></select>
           <button className="btn-primary" type="submit"><Search className="h-4 w-4" /> {t("searchButton")}</button>
         </form>

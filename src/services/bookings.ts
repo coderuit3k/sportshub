@@ -19,6 +19,8 @@ export interface CreateBookingInput {
  * slots are built as Saigon wall-clock times converted to instants. The
  * result is identical no matter what timezone the server process runs in.
  */
+export interface AvailabilitySlot { startAt: Date; endAt: Date; price: number; available: boolean; past: boolean }
+
 export async function getAvailability(facilityId: string, dateISO: string) {
   const facility = await prisma.facility.findUnique({
     where: { id: facilityId },
@@ -28,7 +30,7 @@ export async function getAvailability(facilityId: string, dateISO: string) {
   const { year, month, day } = parseDateISO(dateISO);
   const weekday = weekdayOfDateISO(dateISO);
   const hours = facility.venue.hours.find((h) => h.dayOfWeek === weekday);
-  if (!hours) return { facility, slots: [] as { startAt: Date; endAt: Date; price: number; available: boolean }[] };
+  if (!hours) return { facility, slots: [] as AvailabilitySlot[] };
   const [oh, om] = hours.openTime.split(":").map(Number);
   const [ch, cm] = hours.closeTime.split(":").map(Number);
   const dayStart = startOfDay(dateISO);
@@ -39,9 +41,10 @@ export async function getAvailability(facilityId: string, dateISO: string) {
   const blocked = await prisma.blockedTime.findMany({
     where: { facilityId, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
   });
-  const slots: { startAt: Date; endAt: Date; price: number; available: boolean }[] = [];
+  const slots: AvailabilitySlot[] = [];
   const openMinutes = oh * 60 + om;
   const closeMinutes = ch * 60 + cm;
+  const now = Date.now();
   for (let m = openMinutes; m + 60 <= closeMinutes; m += 60) {
     // Slot start = Saigon wall-clock (date, m minutes after midnight) as an instant.
     const s = fromWallTime(year, month, day, Math.floor(m / 60), m % 60);
@@ -51,7 +54,12 @@ export async function getAvailability(facilityId: string, dateISO: string) {
       blocked.some((b) => s.getTime() < b.endAt.getTime() && b.startAt.getTime() < e.getTime());
     let price = 0;
     try { price = calculatePrice(facility.priceRules, s, e).total; } catch { price = 0; }
-    slots.push({ startAt: s, endAt: e, price, available: !conflict && s.getTime() > Date.now() - 3600_000 });
+    // A slot is bookable only while its start is strictly in the future —
+    // the same boundary createBooking enforces (IN_THE_PAST). Anything at
+    // or before `now` is reported as `past` so the UI can label it
+    // "already passed" instead of offering it and failing at confirm.
+    const past = s.getTime() <= now;
+    slots.push({ startAt: s, endAt: e, price, available: !conflict && !past, past });
   }
   return { facility, slots };
 }

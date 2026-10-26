@@ -26,6 +26,7 @@ export async function GET(req: Request) {
       startTime: formatTimeHHMM(s.startAt),
       price: s.price,
       available: s.available,
+      past: s.past,
     })),
   });
 }

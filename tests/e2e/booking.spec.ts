@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsPlayer, openFirstVenue, futureDate, toDateInputValue, confirmBookingAndReadStatus } from "./helpers";
+import { loginAsPlayer, openFirstVenue, futureDate, toDateInputValue, toDisplayDateValue, widgetDateField, confirmBookingAndReadStatus } from "./helpers";
 
 test.describe("booking flow", () => {
   test("player books an available slot, sees it in My Bookings, then cancels with refund preview", async ({ page }) => {
@@ -24,7 +24,7 @@ test.describe("booking flow", () => {
     outer: for (let dayShift = 0; dayShift < 3 && !booked; dayShift++) {
       const date = futureDate();
       date.setUTCDate(date.getUTCDate() + dayShift);
-      await widget.locator('input[type="date"]').fill(toDateInputValue(date));
+      await widgetDateField(widget).fill(toDisplayDateValue(date));
       const slots = widget.locator("div.grid button:not([disabled])");
       await expect(widget.locator("div.grid button").first()).toBeVisible();
       const count = Math.min(await slots.count(), 6);
@@ -62,5 +62,48 @@ test.describe("booking flow", () => {
     const cancelledCard = page.locator("article", { hasText: reference });
     await expect(cancelledCard).toBeVisible();
     await expect(cancelledCard).toContainText("CANCELLED");
+  });
+
+  test("with duration 3, a start button displays the 3-hour total (not a per-hour average)", async ({ page }) => {
+    await loginAsPlayer(page);
+    await page.goto("/venues");
+    await openFirstVenue(page);
+    const widget = page.locator("div.card", { has: page.getByRole("heading", { name: /Đặt sân —/ }) });
+    await expect(widget).toBeVisible();
+
+    // The expectation is computed from the very availability payload the
+    // widget fetches for the picked date: the first start whose 3 covered
+    // hours are all free must display the SUM of those hours. The old
+    // widget divided the sum by the duration and showed an "average
+    // hourly price" that exists in no price table.
+    let verified = false;
+    for (let dayShift = 2; dayShift < 5 && !verified; dayShift++) {
+      const date = futureDate();
+      date.setUTCDate(date.getUTCDate() + dayShift);
+      const iso = toDateInputValue(date);
+      const responsePromise = page.waitForResponse(
+        (r) => r.url().includes("/api/availability") && r.url().includes(`date=${iso}`) && r.ok(),
+      );
+      await widgetDateField(widget).fill(toDisplayDateValue(date));
+      const avail = (await (await responsePromise).json()) as {
+        slots: { price: number; available: boolean }[];
+      };
+      await widget.getByLabel("Thời lượng").selectOption("3");
+      let startIndex = -1;
+      let total = 0;
+      for (let i = 0; i + 3 <= avail.slots.length; i++) {
+        const group = avail.slots.slice(i, i + 3);
+        if (group.every((s) => s.available)) {
+          startIndex = i;
+          total = group.reduce((sum, s) => sum + s.price, 0);
+          break;
+        }
+      }
+      if (startIndex < 0) continue; // no fully-free 3h start that day — try the next
+      const expected = new Intl.NumberFormat("vi-VN").format(total);
+      await expect(widget.locator("div.grid button").nth(startIndex)).toContainText(expected);
+      verified = true;
+    }
+    expect(verified, "expected a fully-available 3-hour start on one of the probed dates").toBe(true);
   });
 });

@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Heart } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { formatVND } from "@/lib/booking/logic";
+import { formatVND, aggregateSlots, type DisplaySlot, type HourlySlot } from "@/lib/booking/logic";
+import DateField from "@/components/DateField";
 import { useFavoriteIds } from "@/components/use-favorites";
 
 /**
@@ -55,10 +56,8 @@ export function FavoriteButton({ venueId, initial = false, loginLabel }: { venue
   );
 }
 
-export interface SlotDTO { startAt: string; endAt: string; startTime: string; price: number; available: boolean }
+export type SlotDTO = HourlySlot;
 export interface FacilityDTO { id: string; name: string; slots: SlotDTO[] }
-
-interface DisplaySlot { startAt: string; endAt: string; startTime: string; price: number; available: boolean }
 
 export function BookingWidget({ facilities, venueName, initialDate }: { facilities: FacilityDTO[]; venueName: string; initialDate: string }) {
   // `date` is a plain calendar date (YYYY-MM-DD) in the business timezone
@@ -103,23 +102,10 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilityId, date, cacheKey, hourly, slotError]);
 
-  // Aggregate consecutive hourly slots into bookable starts for `duration`:
-  // price is the real per-hour sum (crossing the peak boundary prices each
-  // hour by its own rule) and a start is available only if every covered
-  // hour is free. The server still re-validates everything at booking time.
-  const slots: DisplaySlot[] = [];
-  if (hourly) {
-    for (let i = 0; i + duration <= hourly.length; i++) {
-      const group = hourly.slice(i, i + duration);
-      slots.push({
-        startAt: group[0].startAt,
-        endAt: group[group.length - 1].endAt,
-        startTime: group[0].startTime,
-        price: group.reduce((sum, s) => sum + s.price, 0),
-        available: group.every((s) => s.available),
-      });
-    }
-  }
+  // Aggregate consecutive hourly slots into bookable starts for `duration`
+  // (pure helper in lib/booking/logic — unit-tested). The server still
+  // re-validates everything at booking time.
+  const slots: DisplaySlot[] = hourly ? aggregateSlots(hourly, duration) : [];
   const total = slot ? slot.price : 0;
 
   // Known booking statuses get a localized label; anything unexpected
@@ -148,7 +134,7 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
     <div className="card p-5">
       <h3 className="mb-4 text-lg font-bold">{t("title", { venueName })}</h3>
       <p className="label">{t("step1")}</p>
-      <input type="date" className="input mb-3" value={date} min={initialDate} onChange={(e) => { setDate(e.target.value); setSlot(null); setSlotError(null); }} />
+      <DateField className="input mb-3" value={date} minISO={initialDate} ariaLabel={t("dateAria")} onChange={(iso) => { setDate(iso); setSlot(null); setSlotError(null); }} />
       <p className="label">{t("step2")}</p>
       <div className="mb-3 flex gap-2">
         <select className="input" value={facilityId} onChange={(e) => { setFacilityId(e.target.value); setSlot(null); setSlotError(null); }} aria-label={t("facilityAria")}>
@@ -167,7 +153,7 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
           <button key={s.startAt} disabled={!s.available}
             onClick={() => setSlot(s)}
             className={`rounded-lg border px-2 py-2 text-sm ${!s.available ? "cursor-not-allowed bg-slate-100 text-slate-400" : slot?.startAt === s.startAt ? "border-primary bg-primary text-white" : "hover:border-primary"}`}>
-            {s.startTime}<br /><span className="text-xs">{s.available ? formatVND(Math.round(s.price / duration), locale) : t("slotBooked")}</span>
+            {s.startTime}<br /><span className="text-xs">{s.available ? formatVND(s.price, locale) : s.past ? t("slotPast") : t("slotBooked")}</span>
           </button>
         ))}
       </div>

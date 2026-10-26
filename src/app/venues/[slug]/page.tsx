@@ -54,7 +54,7 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
     const avail = await getAvailability(f.id, initialDate);
     facilitiesDto.push({
       id: f.id, name: `${f.name} — ${sportLabel(f.sport.slug, f.sport.name)}`,
-      slots: (avail?.slots ?? []).map((s) => ({ startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(), startTime: formatTimeHHMM(s.startAt), price: s.price, available: s.available })),
+      slots: (avail?.slots ?? []).map((s) => ({ startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(), startTime: formatTimeHHMM(s.startAt), price: s.price, available: s.available, past: s.past })),
     });
   }
   const dayNames = t.raw("days") as unknown as string[];

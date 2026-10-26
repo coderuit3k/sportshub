@@ -73,7 +73,7 @@ export async function openFirstVenue(page: Page): Promise<void> {
 
 /**
  * Calendar-date helpers anchored to Asia/Ho_Chi_Minh (the business
- * timezone): the date the test writes into <input type="date"> must be the
+ * timezone): the date the test writes into the date field must be the
  * same Saigon calendar date no matter what TZ the test runner/browser uses.
  */
 const saigonParts = (d: Date) => {
@@ -86,11 +86,27 @@ const saigonParts = (d: Date) => {
   return { year: Number(map.year), month: Number(map.month), day: Number(map.day) };
 };
 
-/** Format a Date as its yyyy-mm-dd calendar date in Asia/Ho_Chi_Minh, for <input type="date">. */
+/** Format a Date as its yyyy-mm-dd calendar date in Asia/Ho_Chi_Minh (ISO, the value dates travel as). */
 export function toDateInputValue(d: Date): string {
   const { year, month, day } = saigonParts(d);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/** Rearrange an ISO yyyy-mm-dd into the dd/MM/yyyy the DateField displays and accepts. */
+export function isoToDisplayDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+/** Format a Date as dd/MM/yyyy (Saigon) — what tests type into the DateField. */
+export function toDisplayDateValue(d: Date): string {
+  return isoToDisplayDate(toDateInputValue(d));
+}
+
+/** The booking widget's date field (DateField text input, placeholder dd/MM/yyyy). */
+export function widgetDateField(widget: ReturnType<Page["locator"]>) {
+  return widget.getByPlaceholder("dd/MM/yyyy");
 }
 
 /**

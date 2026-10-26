@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsPlayer, saturdayDateISO, confirmBookingAndReadStatus } from "./helpers";
+import { loginAsPlayer, saturdayDateISO, isoToDisplayDate, widgetDateField, confirmBookingAndReadStatus } from "./helpers";
 
 // Regression spec for the production timezone bug: with the server running
 // under a UTC process TZ (as on Vercel), booking "Saturday 14:00" used to be
@@ -32,11 +32,12 @@ test.describe("timezone regression (Asia/Ho_Chi_Minh anchoring)", () => {
     let reference = "";
     let booked = false;
     for (let week = 0; week < 10 && !booked; week++) {
-      await widget.locator('input[type="date"]').fill(saturdayDateISO(week));
+      await widgetDateField(widget).fill(isoToDisplayDate(saturdayDateISO(week)));
       const slotBtn = widget.locator("div.grid button", { hasText: "14:00" }).first();
       await expect(slotBtn).toBeVisible();
       if (await slotBtn.isDisabled()) continue; // already taken that Saturday
-      // Weekend price must be displayed per-hour BEFORE booking.
+      // Weekend price must be displayed BEFORE booking (at duration 1 the
+      // button's group total equals the single hour's price).
       await expect(slotBtn).toContainText("160.000");
       await slotBtn.click();
       const text = await confirmBookingAndReadStatus(widget, statusBox);

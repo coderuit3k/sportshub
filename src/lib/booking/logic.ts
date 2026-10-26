@@ -115,3 +115,39 @@ export function makeReference(now = new Date()): string {
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `SH-${ymd}-${rand}`;
 }
+
+/** One hourly slot as transferred to the booking widget (instants as ISO strings). */
+export interface HourlySlot {
+  startAt: string;
+  endAt: string;
+  startTime: string;
+  price: number;
+  available: boolean;
+  /** True when the slot's start is not in the future (never bookable). */
+  past: boolean;
+}
+
+/** A bookable start spanning `duration` consecutive hourly slots. */
+export type DisplaySlot = HourlySlot;
+
+/**
+ * Aggregate consecutive hourly slots into bookable starts for `duration`:
+ * the price is the real per-hour sum (crossing a peak boundary prices each
+ * hour by its own rule), a start is available only if every covered hour is
+ * free, and the group is `past` when its first hour is past.
+ */
+export function aggregateSlots(hourly: HourlySlot[], duration: number): DisplaySlot[] {
+  const result: DisplaySlot[] = [];
+  for (let i = 0; i + duration <= hourly.length; i++) {
+    const group = hourly.slice(i, i + duration);
+    result.push({
+      startAt: group[0].startAt,
+      endAt: group[group.length - 1].endAt,
+      startTime: group[0].startTime,
+      price: group.reduce((sum, s) => sum + s.price, 0),
+      available: group.every((s) => s.available),
+      past: group[0].past,
+    });
+  }
+  return result;
+}
