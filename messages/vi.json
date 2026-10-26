@@ -285,6 +285,7 @@
     "indoor": "Trong nhà",
     "keyword": "Từ khóa",
     "keywordPlaceholder": "Tên sân, địa chỉ...",
+    "mapEmpty": "Không có sân nào khớp bộ lọc để hiển thị trên bản đồ.",
     "maxPrice": "Giá tối đa / giờ",
     "minRating": "Đánh giá từ",
     "mixed": "Hỗn hợp",
@@ -303,6 +304,8 @@
     "sortRecommended": "Đề xuất",
     "sport": "Môn",
     "type": "Loại sân",
-    "viewAllVenues": "Xem mọi sân"
+    "viewAllVenues": "Xem mọi sân",
+    "viewList": "Danh sách",
+    "viewMap": "Bản đồ"
   }
 }

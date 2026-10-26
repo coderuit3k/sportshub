@@ -285,6 +285,7 @@
     "indoor": "Indoor",
     "keyword": "Keyword",
     "keywordPlaceholder": "Venue name, address...",
+    "mapEmpty": "No venues match the current filters to show on the map.",
     "maxPrice": "Max price / hour",
     "minRating": "Rating from",
     "mixed": "Mixed",
@@ -303,6 +304,8 @@
     "sortRecommended": "Recommended",
     "sport": "Sport",
     "type": "Venue type",
-    "viewAllVenues": "View all venues"
+    "viewAllVenues": "View all venues",
+    "viewList": "List",
+    "viewMap": "Map"
   }
 }

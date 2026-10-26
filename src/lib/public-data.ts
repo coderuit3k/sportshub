@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { storedPrimaryImageUrl } from "@/lib/venue-images";
 
@@ -182,19 +183,27 @@ export interface VenueListItem {
   imageUrl: string | null;
 }
 
+/** Prisma `where` shared by the venue list and the map dataset — one
+ * definition so the two views can never disagree about what a filter set
+ * matches. (The maxPrice cap is NOT here: prices live on facilities, so
+ * both readers apply it in JS after computing each venue's min price.) */
+function venueWhereFromFilters(filters: VenueListFilters): Prisma.VenueWhereInput {
+  return {
+    status: "APPROVED",
+    ...(filters.district ? { district: filters.district } : {}),
+    ...(filters.type ? { venueType: filters.type } : {}),
+    ...(filters.beginner ? { beginnerFriendly: true } : {}),
+    ...(filters.family ? { familyFriendly: true } : {}),
+    ...(filters.minRating != null ? { ratingAvg: { gte: filters.minRating } } : {}),
+    ...(filters.sport ? { sports: { some: { sport: { slug: filters.sport } } } } : {}),
+    ...(filters.q ? { OR: [{ name: { contains: filters.q } }, { district: { contains: filters.q } }, { address: { contains: filters.q } }] } : {}),
+  };
+}
+
 export const getCachedVenueList = unstable_cache(
   async (filters: VenueListFilters): Promise<VenueListItem[]> => {
     const venues = await prisma.venue.findMany({
-      where: {
-        status: "APPROVED",
-        ...(filters.district ? { district: filters.district } : {}),
-        ...(filters.type ? { venueType: filters.type } : {}),
-        ...(filters.beginner ? { beginnerFriendly: true } : {}),
-        ...(filters.family ? { familyFriendly: true } : {}),
-        ...(filters.minRating != null ? { ratingAvg: { gte: filters.minRating } } : {}),
-        ...(filters.sport ? { sports: { some: { sport: { slug: filters.sport } } } } : {}),
-        ...(filters.q ? { OR: [{ name: { contains: filters.q } }, { district: { contains: filters.q } }, { address: { contains: filters.q } }] } : {}),
-      },
+      where: venueWhereFromFilters(filters),
       include: {
         sports: { include: { sport: true } },
         facilities: { include: { priceRules: true } },
@@ -232,6 +241,56 @@ export const getCachedVenueList = unstable_cache(
     }));
   },
   ["public:venue-list:v2"],
+  { revalidate: 60, tags: [VENUES_TAG] },
+);
+
+/* ------------------------------------------------------------------ */
+/* Venue map (/venues?view=map)                                        */
+/* ------------------------------------------------------------------ */
+
+/** One map pin: the same filter set as the list, projected down to what
+ * a marker + popup needs. Venues without coordinates can't be pinned
+ * and are excluded here (the list still shows them). */
+export interface VenueMapPoint {
+  slug: string;
+  name: string;
+  district: string;
+  latitude: number;
+  longitude: number;
+  primarySportSlug: string | null;
+  sportName: string | null;
+  minPrice: number | null;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+export const getCachedVenueMapPoints = unstable_cache(
+  async (filters: VenueListFilters): Promise<VenueMapPoint[]> => {
+    const venues = await prisma.venue.findMany({
+      where: venueWhereFromFilters(filters),
+      include: {
+        sports: { include: { sport: true } },
+        facilities: { include: { priceRules: true } },
+      },
+    });
+    return venues
+      .map((v) => ({ v, minPrice: minPriceOf(v.facilities) }))
+      .filter((x) => filters.maxPrice == null || (x.minPrice !== null && x.minPrice <= filters.maxPrice))
+      .filter((x) => x.v.latitude != null && x.v.longitude != null)
+      .map(({ v, minPrice }) => ({
+        slug: v.slug,
+        name: v.name,
+        district: v.district,
+        latitude: v.latitude as number,
+        longitude: v.longitude as number,
+        primarySportSlug: v.sports[0]?.sport.slug ?? null,
+        sportName: v.sports[0]?.sport.name ?? null,
+        minPrice,
+        ratingAvg: v.ratingAvg,
+        ratingCount: v.ratingCount,
+      }));
+  },
+  ["public:venue-map-points:v2"],
   { revalidate: 60, tags: [VENUES_TAG] },
 );
 

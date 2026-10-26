@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { List, Map as MapIcon } from "lucide-react";
 import { prisma } from "@/lib/db";
 import VenueCard from "@/components/VenueCard";
+import VenueMapSection from "@/components/VenueMapSection";
 import { getCurrentUser } from "@/lib/auth";
-import { getCachedSportsAndDistricts, getCachedVenueList, type VenueListFilters } from "@/lib/public-data";
+import { getCachedSportsAndDistricts, getCachedVenueList, getCachedVenueMapPoints, type VenueListFilters } from "@/lib/public-data";
 import { getLocale, getTranslations } from "next-intl/server";
 import { formatVND } from "@/lib/booking/logic";
 import { sportName } from "@/i18n/vocab";
 
 export const metadata = { title: "Tìm sân" };
 
-interface SP { sport?: string; q?: string; district?: string; maxPrice?: string; minRating?: string; type?: string; beginner?: string; family?: string; sort?: string; date?: string; time?: string; page?: string }
+interface SP { sport?: string; q?: string; district?: string; maxPrice?: string; minRating?: string; type?: string; beginner?: string; family?: string; sort?: string; date?: string; time?: string; page?: string; view?: string }
 
 const PAGE_SIZE = 12;
 
@@ -37,6 +39,26 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
   };
   const { sports, districts } = await getCachedSportsAndDistricts();
   const sorted = await getCachedVenueList(filters);
+  // Map view (?view=map) swaps the card grid for a Leaflet map of the SAME
+  // filtered set — all matches, not just the current page — via its own
+  // cached dataset. The list stays the default; the map dataset is only
+  // read when the map is actually open.
+  const isMapView = sp.view === "map";
+  const mapPoints = isMapView ? await getCachedVenueMapPoints(filters) : [];
+  const viewHref = (view: "list" | "map") => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries({ sport: sp.sport, q: sp.q, district: sp.district, maxPrice: sp.maxPrice, minRating: sp.minRating, type: sp.type, beginner: sp.beginner, family: sp.family, sort: sp.sort, page: sp.page })) {
+      if (value) params.set(key, value);
+    }
+    if (view === "map") {
+      params.set("view", "map");
+      params.delete("page");
+    } else {
+      params.delete("view");
+    }
+    const qs = params.toString();
+    return qs ? `/venues?${qs}` : "/venues";
+  };
   // Server-side pagination over the (cached, fully sorted) result set:
   // 12 cards per page, `?page=` preserves every active filter.
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
@@ -55,6 +77,8 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
       <form method="get" className="card h-fit space-y-3 p-4" aria-label={t("filters")}>
+        {/* Keep the visitor in the map view when they refine filters. */}
+        {isMapView && <input type="hidden" name="view" value="map" />}
         <h2 className="font-bold">{t("filters")}</h2>
         <div><label className="label" htmlFor="q">{t("keyword")}</label><input id="q" name="q" className="input" defaultValue={sp.q ?? ""} placeholder={t("keywordPlaceholder")} /></div>
         <div><label className="label" htmlFor="sport">{t("sport")}</label><select id="sport" name="sport" className="input" defaultValue={sp.sport ?? ""}><option value="">{t("all")}</option>{sports.map((s) => <option key={s.id} value={s.slug}>{sportLabel(s.slug, s.name)}</option>)}</select></div>
@@ -69,8 +93,20 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
         <Link href="/venues" className="block text-center text-sm font-medium text-primary">{t("clear")}</Link>
       </form>
       <section>
-        <h1 className="mb-4 text-2xl font-bold">{t("heading")} <span className="text-base font-normal text-slate-500">{t("resultsCount", { count: sorted.length })}</span></h1>
-        {sorted.length === 0 ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold">{t("heading")} <span className="text-base font-normal text-slate-500">{t("resultsCount", { count: sorted.length })}</span></h1>
+          <div className="inline-flex rounded-full bg-slate-100 p-1" role="group">
+            <Link href={viewHref("list")} aria-current={!isMapView ? "page" : undefined} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${!isMapView ? "bg-primary text-white" : "text-slate-600 hover:text-primary"}`}>
+              <List className="h-4 w-4" /> {t("viewList")}
+            </Link>
+            <Link href={viewHref("map")} aria-current={isMapView ? "page" : undefined} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${isMapView ? "bg-primary text-white" : "text-slate-600 hover:text-primary"}`}>
+              <MapIcon className="h-4 w-4" /> {t("viewMap")}
+            </Link>
+          </div>
+        </div>
+        {isMapView ? (
+          <VenueMapSection points={mapPoints} />
+        ) : sorted.length === 0 ? (
           <div className="card p-8 text-center text-slate-500">{t("empty")}<br /><Link className="font-semibold text-primary" href="/venues">{t("viewAllVenues")}</Link></div>
         ) : (
           <>
