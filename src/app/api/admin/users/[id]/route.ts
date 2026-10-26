@@ -4,19 +4,22 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canLockAccount, validateNewPassword } from "@/lib/admin/user-admin";
+import { canChangeRole, canLockAccount, validateNewPassword, validateUserRole } from "@/lib/admin/user-admin";
 import { genericWriteLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("set-password"), password: z.string() }),
+  z.object({ action: z.literal("set-role"), role: z.string() }),
   z.object({ action: z.literal("lock") }),
 ]);
 
 /**
  * Admin user management (Phase 3, Workstream A).
- * Lets an ADMIN rotate a user's password or lock the account from the admin UI,
- * so the seeded demo accounts can be secured without any credential passing
- * through chat/support channels. Every action is audit-logged.
+ * Lets an ADMIN rotate a user's password, change their role or lock the
+ * account from the admin UI, so the seeded demo accounts can be secured
+ * without any credential passing through chat/support channels. This
+ * endpoint is the ONLY way to grant ADMIN — self-registration accepts
+ * PLAYER/OWNER only. Every action is audit-logged.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getCurrentUser();
@@ -40,6 +43,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       data: { actorId: actor.id, action: "USER_PASSWORD_RESET", entity: "User", entityId: id, details: target.email },
     });
     return NextResponse.json({ ok: true, action: "set-password", userId: id });
+  }
+
+  if (parsed.data.action === "set-role") {
+    const check = validateUserRole(parsed.data.role);
+    if (!check.valid) return NextResponse.json({ error: check.error }, { status: 400 });
+    if (!canChangeRole(actor.id, id)) {
+      return NextResponse.json({ error: "Không thể tự thay đổi vai trò của chính bạn" }, { status: 400 });
+    }
+    const previousRole = target.role;
+    await prisma.user.update({ where: { id }, data: { role: check.role } });
+    await prisma.auditLog.create({
+      data: {
+        actorId: actor.id,
+        action: "USER_ROLE_CHANGED",
+        entity: "User",
+        entityId: id,
+        details: `${target.email}: ${previousRole} → ${check.role}`,
+      },
+    });
+    return NextResponse.json({ ok: true, action: "set-role", userId: id, role: check.role });
   }
 
   // action === "lock": replace the hash with a hash of an unknown random value,

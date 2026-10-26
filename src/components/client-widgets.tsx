@@ -226,9 +226,10 @@ export function JoinButton({ sessionId, initialJoined, full }: { sessionId: stri
   );
 }
 
-export function AdminUserControls({ userId, userEmail, isSelf }: { userId: string; userEmail: string; isSelf: boolean }) {
+export function AdminUserControls({ userId, userEmail, isSelf, currentRole }: { userId: string; userEmail: string; isSelf: boolean; currentRole: string }) {
   const [showForm, setShowForm] = useState(false);
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState(currentRole);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -257,6 +258,21 @@ export function AdminUserControls({ userId, userEmail, isSelf }: { userId: strin
           </button>
         )}
       </span>
+      {!isSelf && (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <select className="input !w-44 !py-1.5 text-sm" value={role} onChange={(e) => setRole(e.target.value)} aria-label={`Vai trò của ${userEmail}`}>
+            <option value="PLAYER">Người chơi — PLAYER</option>
+            <option value="OWNER">Chủ sân — OWNER</option>
+            <option value="ADMIN">Quản trị — ADMIN</option>
+          </select>
+          <button className="btn-outline !px-3 !py-1.5 text-sm" disabled={busy || role === currentRole}
+            onClick={async () => {
+              if (await post({ action: "set-role", role })) { setMsg("Đã thay đổi vai trò."); window.location.reload(); }
+            }}>
+            Đổi vai trò
+          </button>
+        </span>
+      )}
       {showForm && (
         <span className="inline-flex flex-wrap items-center gap-2">
           <input type="password" className="input !w-56 !py-1.5 text-sm" placeholder="Mật khẩu mới (≥ 10 ký tự)" autoComplete="new-password"

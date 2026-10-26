@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { MIN_ADMIN_PASSWORD_LENGTH, validateNewPassword, canLockAccount } from "@/lib/admin/user-admin";
+import {
+  MIN_ADMIN_PASSWORD_LENGTH,
+  validateNewPassword,
+  canLockAccount,
+  validateUserRole,
+  canChangeRole,
+} from "@/lib/admin/user-admin";
 
 describe("admin new-password policy", () => {
   it("accepts a password of exactly the minimum length", () => {
@@ -29,5 +35,31 @@ describe("admin self-lock guard", () => {
   it("an admin can lock another user's account", () => {
     expect(canLockAccount("admin-1", "player-9")).toBe(true);
     expect(canLockAccount("admin-1", "owner-2")).toBe(true);
+  });
+});
+
+describe("admin role validation", () => {
+  it("accepts every grantable role, including ADMIN (admin panel only)", () => {
+    expect(validateUserRole("PLAYER")).toEqual({ valid: true, role: "PLAYER" });
+    expect(validateUserRole("OWNER")).toEqual({ valid: true, role: "OWNER" });
+    expect(validateUserRole("ADMIN")).toEqual({ valid: true, role: "ADMIN" });
+  });
+  it("rejects unknown / mistyped roles", () => {
+    expect(validateUserRole("SUPERADMIN").valid).toBe(false);
+    expect(validateUserRole("player").valid).toBe(false);
+    expect(validateUserRole("").valid).toBe(false);
+    expect(validateUserRole(undefined).valid).toBe(false);
+    expect(validateUserRole(null).valid).toBe(false);
+    expect(validateUserRole(42).valid).toBe(false);
+  });
+});
+
+describe("admin self role-change guard", () => {
+  it("an admin cannot change their own role", () => {
+    expect(canChangeRole("admin-1", "admin-1")).toBe(false);
+  });
+  it("an admin can change another user's role", () => {
+    expect(canChangeRole("admin-1", "player-9")).toBe(true);
+    expect(canChangeRole("admin-1", "admin-2")).toBe(true);
   });
 });

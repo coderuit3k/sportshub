@@ -28,3 +28,30 @@ export function validateNewPassword(password: unknown): PasswordValidation {
 export function canLockAccount(actorId: string, targetUserId: string): boolean {
   return actorId !== targetUserId;
 }
+
+export const USER_ROLES = ["PLAYER", "OWNER", "ADMIN"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const userRoleSchema = z.enum(USER_ROLES);
+
+export type RoleValidation = { valid: true; role: UserRole } | { valid: false; error: string };
+
+/**
+ * Validate a role an admin wants to grant. Self-registration accepts only
+ * PLAYER/OWNER (its route schema), but an admin may grant any role —
+ * including ADMIN — from the admin panel.
+ */
+export function validateUserRole(role: unknown): RoleValidation {
+  const parsed = userRoleSchema.safeParse(role);
+  if (parsed.success) return { valid: true, role: parsed.data };
+  return { valid: false, error: "Vai trò không hợp lệ (chỉ PLAYER, OWNER hoặc ADMIN)" };
+}
+
+/**
+ * Self role-change guard: an admin must never change their own role —
+ * demoting themselves would strand the platform without an admin session,
+ * and self-service role edits bypass the second pair of eyes entirely.
+ */
+export function canChangeRole(actorId: string, targetUserId: string): boolean {
+  return actorId !== targetUserId;
+}

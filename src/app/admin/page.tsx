@@ -42,8 +42,8 @@ export default async function AdminPage() {
       <section className="card p-5">
         <h2 className="mb-3 font-bold">Người dùng</h2>
         <table className="w-full text-sm"><thead><tr className="text-left text-slate-500"><th className="py-1">Tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-          <tbody>{users.map((u) => <tr key={u.id} className="border-t"><td className="py-2">{u.name}</td><td>{u.email}</td><td>{u.role}</td><td>{u.status}</td><td className="py-2"><AdminUserControls userId={u.id} userEmail={u.email} isSelf={u.id === user.id} /></td></tr>)}</tbody></table>
-        <p className="mt-3 text-sm text-slate-500">Đặt mật khẩu mới: dùng để xoay vòng (rotate) các tài khoản khởi tạo sau khi deploy production. Khoá tài khoản: thay mật khẩu bằng giá trị ngẫu nhiên không ai biết — mở khoá bằng cách đặt mật khẩu mới. Mọi thao tác đều ghi Audit Log.</p>
+          <tbody>{users.map((u) => <tr key={u.id} className="border-t"><td className="py-2">{u.name}</td><td>{u.email}</td><td>{u.role}</td><td>{u.status}</td><td className="py-2"><AdminUserControls userId={u.id} userEmail={u.email} isSelf={u.id === user.id} currentRole={u.role} /></td></tr>)}</tbody></table>
+        <p className="mt-3 text-sm text-slate-500">Đặt mật khẩu mới: dùng để xoay vòng (rotate) các tài khoản khởi tạo sau khi deploy production. Khoá tài khoản: thay mật khẩu bằng giá trị ngẫu nhiên không ai biết — mở khoá bằng cách đặt mật khẩu mới. Đổi vai trò: nâng/hạ quyền người dùng (kể cả cấp ADMIN) — không thể tự đổi vai trò của chính bạn. Mọi thao tác đều ghi Audit Log.</p>
       </section>
       <section className="card p-5">
         <h2 className="mb-3 font-bold">Audit Log (thời gian thực từ DB)</h2>
