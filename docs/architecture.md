@@ -75,15 +75,31 @@ key, no runtime API calls, no DB column. Lookup order:
    Supabase storage); Aqua Pool Quận 7 — Tôn Đức Thắng University
    (`international.tdtu.edu.vn`; the university's own Quận 7 pool is
    25 m × 13.5 m with 6 lanes, the same spec as the seed venue).
-2. **Sport-level stock fallback** (`VENUE_IMAGES`, Unsplash / Pexels CDN
-   links, verified the same way), picked deterministically by hashing
-   the venue slug. Two venues currently resolve here because no usable
-   real-site photo could be verified for them: Sài Gòn Mini Football Q7
-   (candidate operators' own sites served only stock ball close-ups and
-   marketing banners) and Riverside Tennis Q1 (the candidate club site
-   served only stock portraits and text-heavy banners). To upgrade one,
-   verify a real facility photo the same way and add it to
-   `VENUE_PHOTOS`.
+2. **Sport-level pools** (`VENUE_IMAGES`, keyed by sport slug, picked
+   deterministically by hashing the venue slug). Each pool holds 12–15
+   photos and leads with **real facility photography**, so the 30 venues
+   of a sport stop repeating the same images: badminton 15 photos
+   (11 real), pickleball 15 (7 real), mini football 12 (8 real),
+   tennis 13 (9 real), basketball 15 (11 real), swimming 12 (8 real).
+   The real entries are photos of actual courts / halls / pools from
+   Vietnamese operator and sports-guide sites where usable shots could
+   be verified (Cốc Cốc Badminton via `top3.vn`; HCMC basketball courts
+   via `sonsanepoxy.vn`, `thethaothienlong.vn`, `hocbongro.com.vn`) and
+   from Wikimedia Commons (named facilities worldwide — e.g. Nimibutr
+   Stadium, Wimbledon, GBK Tennis Stadium, the Australian Institute of
+   Sport pool; files are CC BY / CC BY-SA / public domain, credited to
+   their Commons authors, served from `thumb.wikimedia.org`). The tail
+   of each pool keeps the earlier verified Unsplash / Pexels stock
+   entries; pickleball — the scarcest sport for real-court photography
+   (the HCMC listicle photos found were all watermarked, so they were
+   rejected) — adds a few extra stock top-ups, one of which depicts
+   Pickleball 1990, a real indoor club in Hanoi. Two venues resolve
+   here because no usable real-site photo could be verified for them:
+   Sài Gòn Mini Football Q7 (candidate operators' own sites served only
+   stock ball close-ups and marketing banners) and Riverside Tennis Q1
+   (the candidate club site served only stock portraits and text-heavy
+   banners). To upgrade one, verify a real facility photo the same way
+   and add it to `VENUE_PHOTOS`.
 
 Every host used above is allowlisted in `next.config.ts`
 (`images.remotePatterns`). Fallback: a venue with no photo at either

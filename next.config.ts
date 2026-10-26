@@ -20,6 +20,16 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "mdfajydtdhiuflrkruft.supabase.co" },
       // Tôn Đức Thắng University (Quận 7 pool) — tdtu.edu.vn
       { protocol: "https", hostname: "international.tdtu.edu.vn" },
+      // Sport-pool real-facility photos: Wikimedia Commons thumbnails
+      // (named facilities worldwide, CC-licensed — see
+      // docs/architecture.md, "Venue photos").
+      { protocol: "https", hostname: "thumb.wikimedia.org" },
+      // Cốc Cốc Badminton (Bình Tân) photo via top3.vn's courts guide.
+      { protocol: "https", hostname: "top3.vn" },
+      // HCMC basketball-court photos via local sports guides.
+      { protocol: "https", hostname: "sonsanepoxy.vn" },
+      { protocol: "https", hostname: "thethaothienlong.vn" },
+      { protocol: "https", hostname: "hocbongro.com.vn" },
     ],
   },
 };
