@@ -55,6 +55,7 @@
   "auth": {
     "createAccount": "Tạo tài khoản",
     "email": "Email",
+    "hidePassword": "Ẩn mật khẩu",
     "loginFailed": "Đăng nhập thất bại",
     "loginSubmit": "Đăng nhập",
     "loginTitle": "Đăng nhập",
@@ -67,7 +68,8 @@
     "registerTitle": "Đăng ký SportsHub",
     "role": "Vai trò",
     "roleOwner": "Chủ sân",
-    "rolePlayer": "Người chơi"
+    "rolePlayer": "Người chơi",
+    "showPassword": "Hiện mật khẩu"
   },
   "booking": {
     "actionApprove": "Duyệt",

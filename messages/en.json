@@ -55,6 +55,7 @@
   "auth": {
     "createAccount": "Create account",
     "email": "Email",
+    "hidePassword": "Hide password",
     "loginFailed": "Login failed",
     "loginSubmit": "Log in",
     "loginTitle": "Log in",
@@ -67,7 +68,8 @@
     "registerTitle": "Sign up for SportsHub",
     "role": "Role",
     "roleOwner": "Venue owner",
-    "rolePlayer": "Player"
+    "rolePlayer": "Player",
+    "showPassword": "Show password"
   },
   "booking": {
     "actionApprove": "Approve",

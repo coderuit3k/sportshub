@@ -7,7 +7,7 @@ export const ADMIN = { email: "admin@sportshub.local", password: "Password123!" 
 export async function login(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Mật khẩu").fill(password);
+  await page.getByLabel("Mật khẩu", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   // Header switches to the logged-in state (logout button + user links).
   await expect(page.getByRole("button", { name: "Đăng xuất" })).toBeVisible();

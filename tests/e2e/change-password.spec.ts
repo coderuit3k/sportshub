@@ -26,7 +26,7 @@ test("player can change password, old one stops working, then restores it", asyn
   await expect(page.getByRole("link", { name: "Đăng nhập" })).toBeVisible();
   await page.goto("/login");
   await page.getByLabel("Email").fill(PLAYER.email);
-  await page.getByLabel("Mật khẩu").fill(PLAYER.password);
+  await page.getByLabel("Mật khẩu", { exact: true }).fill(PLAYER.password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   // Note: getByRole("alert") is ambiguous here — Next's route announcer also
   // carries role="alert". Assert on the message text instead.

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import PasswordInput from "@/components/PasswordInput";
 export default function RegisterPage() {
   const t = useTranslations("auth");
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,7 @@ export default function RegisterPage() {
         <h1 className="text-2xl font-bold">{t("registerTitle")}</h1>
         <div><label className="label" htmlFor="name">{t("name")}</label><input id="name" name="name" required className="input" /></div>
         <div><label className="label" htmlFor="email">{t("email")}</label><input id="email" name="email" type="email" required className="input" autoComplete="email" /></div>
-        <div><label className="label" htmlFor="password">{t("passwordHint")}</label><input id="password" name="password" type="password" required minLength={8} className="input" autoComplete="new-password" /></div>
+        <div><label className="label" htmlFor="password">{t("passwordHint")}</label><PasswordInput id="password" name="password" required minLength={8} className="input" autoComplete="new-password" /></div>
         <div><label className="label" htmlFor="role">{t("role")}</label><select id="role" name="role" className="input"><option value="PLAYER">{t("rolePlayer")}</option><option value="OWNER">{t("roleOwner")}</option></select></div>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         <button className="btn-primary w-full" type="submit">{t("createAccount")}</button>
