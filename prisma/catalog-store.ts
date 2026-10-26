@@ -28,9 +28,12 @@
  * - Owner-removed venues (REMOVED_VENUE_SLUGS in venue-catalog.ts,
  *   trimmed 2026-10-26) are deleted — with all their children — at
  *   the start of every run, so databases seeded before the trim
- *   converge too. A removed venue that somehow has bookings is NOT
- *   deleted; it is reported and the step throws like any other
- *   incompleteness.
+ *   converge too. The removal pass is isolated per venue, like the
+ *   insert path: blockers are pre-scanned and logged, each venue is
+ *   deleted in its own transaction, a failure on one venue is logged
+ *   with its slug and does NOT stop the remaining removals. A removed
+ *   venue that somehow has bookings is NOT deleted; it is reported
+ *   and the step throws like any other incompleteness.
  *
  * Ownership: catalog venues belong to the seed owner account
  * (owner@sportshub.local). The ensure-step get-or-creates that account
@@ -171,28 +174,112 @@ interface RemovalOutcome {
   removed: number;
   /** Removed-slug venues that still exist because they have bookings — the step must fail. */
   blocked: Array<{ slug: string; bookings: number }>;
+  /** Removed-slug venues whose deletion transaction failed — the step must fail. */
+  failed: Array<{ slug: string; error: string }>;
 }
 
 /**
- * Delete the owner-removed venues (REMOVED_VENUE_SLUGS) together with
- * ALL of their children, one transaction per venue. Children are
- * deleted explicitly (rather than relying on schema cascades alone)
- * so nothing is left pointing at a venue that no longer exists:
- * price rules + blocked times via the facilities, then reviews,
- * favorites, sessions (their participants cascade), facilities,
- * sport links, amenities, operating hours, images and staff rows.
+ * Delete ONE retired venue with the COMPLETE foreign-key closure of
+ * the venue subtree, in dependency order, inside a single
+ * transaction. Every referencing model is deleted EXPLICITLY — the
+ * pass never relies on a schema cascade alone (the 2026-10-26
+ * production build failure: session participants were only covered
+ * by the SessionParticipant→SportsSession cascade, so a session with
+ * participants on a retired venue could abort the whole removal —
+ * and, the pass having no per-venue isolation, the whole catalog
+ * step — with a raw FK error):
  *
- * A venue with ANY booking is never deleted — bookings are financial
- * records, not catalog data. It is collected as blocked and the
- * caller fails the step loudly so a human can clean it up manually.
+ *   PriceRule → Facility (cascade in schema; deleted explicitly)
+ *   BlockedTime → Facility and → Venue (both deleted explicitly)
+ *   SessionParticipant → SportsSession (deleted explicitly, first)
+ *   SportsSession → Venue (no cascade in schema; deleted explicitly)
+ *   Review / Favorite / VenueSport / VenueAmenity / OperatingHour /
+ *   VenueImage / VenueStaff → Venue (cascades; deleted explicitly)
+ *   Facility → Venue (deleted explicitly)
+ *   Booking → Venue and → Facility declare NO cascade: they are the
+ *   guard's job (see removeRemovedVenues) and are never deleted here.
+ *   Notification.relatedId / AuditLog.entityId / Review.bookingId /
+ *   SportsSession.linkedBookingId / IdempotencyKey.resultId are plain
+ *   strings with no FK — they cannot block a delete.
+ */
+async function deleteRetiredVenue(prisma: Db, venueId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const facilities = await tx.facility.findMany({
+      where: { venueId },
+      select: { id: true },
+    });
+    const facilityIds = facilities.map((f) => f.id);
+    if (facilityIds.length > 0) {
+      await tx.priceRule.deleteMany({ where: { facilityId: { in: facilityIds } } });
+      await tx.blockedTime.deleteMany({ where: { facilityId: { in: facilityIds } } });
+    }
+    await tx.blockedTime.deleteMany({ where: { venueId } });
+    // Sessions: participants FIRST (explicit — not cascade-reliant),
+    // then the sessions themselves.
+    const sessions = await tx.sportsSession.findMany({
+      where: { venueId },
+      select: { id: true },
+    });
+    if (sessions.length > 0) {
+      await tx.sessionParticipant.deleteMany({
+        where: { sessionId: { in: sessions.map((s) => s.id) } },
+      });
+      await tx.sportsSession.deleteMany({ where: { venueId } });
+    }
+    await tx.review.deleteMany({ where: { venueId } });
+    await tx.favorite.deleteMany({ where: { venueId } });
+    await tx.facility.deleteMany({ where: { venueId } });
+    await tx.venueSport.deleteMany({ where: { venueId } });
+    await tx.venueAmenity.deleteMany({ where: { venueId } });
+    await tx.operatingHour.deleteMany({ where: { venueId } });
+    await tx.venueImage.deleteMany({ where: { venueId } });
+    await tx.venueStaff.deleteMany({ where: { venueId } });
+    await tx.venue.delete({ where: { id: venueId } });
+  });
+}
+
+/**
+ * Remove the owner-retired venues (REMOVED_VENUE_SLUGS).
+ *
+ * Phase 1 — pre-scan: for EVERY retired slug that still exists, count
+ * its bookings BEFORE deleting anything, and log each blocker. A
+ * booking references a venue both directly (Booking.venueId) and
+ * through the booked facility (Booking.facilityId → Facility.venueId);
+ * the app always sets venueId := facility.venueId, but the scan
+ * counts both paths so an inconsistent row can never slip past the
+ * guard and explode inside the delete transaction instead. A venue
+ * with ANY booking is never deleted — bookings are financial records,
+ * not catalog data; it is collected as blocked and the caller fails
+ * the step loudly so a human can clean it up manually.
+ *
+ * Phase 2 — delete: each unblocked venue is deleted in its OWN
+ * transaction (see deleteRetiredVenue). A failure is logged with the
+ * slug and recorded, and the pass CONTINUES with the remaining
+ * venues — one bad venue can no longer freeze the other nine. The
+ * caller still fails the step at the end if anything was blocked or
+ * failed, naming every slug involved.
  */
 async function removeRemovedVenues(prisma: Db): Promise<RemovalOutcome> {
-  let removed = 0;
+  // Phase 1 — pre-scan all retired slugs for booking blockers.
+  const candidates: Array<{ slug: string; venueId: string }> = [];
   const blocked: Array<{ slug: string; bookings: number }> = [];
   for (const slug of REMOVED_VENUE_SLUGS) {
     const venue = await prisma.venue.findUnique({ where: { slug }, select: { id: true } });
     if (!venue) continue;
-    const bookings = await prisma.booking.count({ where: { venueId: venue.id } });
+    const facilities = await prisma.facility.findMany({
+      where: { venueId: venue.id },
+      select: { id: true },
+    });
+    const bookings = await prisma.booking.count({
+      where: {
+        OR: [
+          { venueId: venue.id },
+          ...(facilities.length > 0
+            ? [{ facilityId: { in: facilities.map((f) => f.id) } }]
+            : []),
+        ],
+      },
+    });
     if (bookings > 0) {
       blocked.push({ slug, bookings });
       console.error(
@@ -200,32 +287,25 @@ async function removeRemovedVenues(prisma: Db): Promise<RemovalOutcome> {
       );
       continue;
     }
-    await prisma.$transaction(async (tx) => {
-      const facilities = await tx.facility.findMany({
-        where: { venueId: venue.id },
-        select: { id: true },
-      });
-      const facilityIds = facilities.map((f) => f.id);
-      if (facilityIds.length > 0) {
-        await tx.priceRule.deleteMany({ where: { facilityId: { in: facilityIds } } });
-        await tx.blockedTime.deleteMany({ where: { facilityId: { in: facilityIds } } });
-      }
-      await tx.blockedTime.deleteMany({ where: { venueId: venue.id } });
-      await tx.review.deleteMany({ where: { venueId: venue.id } });
-      await tx.favorite.deleteMany({ where: { venueId: venue.id } });
-      await tx.sportsSession.deleteMany({ where: { venueId: venue.id } });
-      await tx.facility.deleteMany({ where: { venueId: venue.id } });
-      await tx.venueSport.deleteMany({ where: { venueId: venue.id } });
-      await tx.venueAmenity.deleteMany({ where: { venueId: venue.id } });
-      await tx.operatingHour.deleteMany({ where: { venueId: venue.id } });
-      await tx.venueImage.deleteMany({ where: { venueId: venue.id } });
-      await tx.venueStaff.deleteMany({ where: { venueId: venue.id } });
-      await tx.venue.delete({ where: { id: venue.id } });
-    });
-    removed += 1;
-    console.log(`[catalog] removed owner-retired venue ${slug}`);
+    candidates.push({ slug, venueId: venue.id });
   }
-  return { removed, blocked };
+
+  // Phase 2 — delete each candidate in its own transaction; a
+  // failure is logged with its slug and does not stop the rest.
+  let removed = 0;
+  const failed: Array<{ slug: string; error: string }> = [];
+  for (const { slug, venueId } of candidates) {
+    try {
+      await deleteRetiredVenue(prisma, venueId);
+      removed += 1;
+      console.log(`[catalog] removed owner-retired venue ${slug}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failed.push({ slug, error: message });
+      console.error(`[catalog] FAILED removal of retired venue ${slug}: ${message}`);
+    }
+  }
+  return { removed, blocked, failed };
 }
 
 /**
@@ -324,15 +404,24 @@ export async function ensureVenueCatalog(prisma: Db): Promise<EnsureCatalogResul
   console.log(
     `[catalog] ensure summary: inserted=${inserted} skipped=${skipped} ` +
       `repaired=${repaired} removed=${removal.removed} removalBlocked=${removal.blocked.length} ` +
+      `removalFailed=${removal.failed.length} ` +
       `failed=${failures.length} missing=${missing.length} retiredStillPresent=${retiredStillPresent.length}`,
   );
-  if (failures.length > 0 || missing.length > 0 || removal.blocked.length > 0 || retiredStillPresent.length > 0) {
+  if (
+    failures.length > 0 ||
+    missing.length > 0 ||
+    removal.blocked.length > 0 ||
+    removal.failed.length > 0 ||
+    retiredStillPresent.length > 0
+  ) {
     throw new Error(
       `ensureVenueCatalog incomplete: ${failures.length} venue(s) failed ` +
         `[${failures.map((f) => f.slug).join(", ")}]; ${missing.length} venue(s) ` +
         `missing/incomplete after run [${missing.join(", ")}]; ` +
         `${removal.blocked.length} retired venue(s) blocked by bookings ` +
         `[${removal.blocked.map((b) => `${b.slug} (${b.bookings} bookings)`).join(", ")}]; ` +
+        `${removal.failed.length} retired venue(s) failed to delete ` +
+        `[${removal.failed.map((f) => f.slug).join(", ")}]; ` +
         `${retiredStillPresent.length} retired venue(s) still present ` +
         `[${retiredStillPresent.join(", ")}]`,
     );
