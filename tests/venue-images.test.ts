@@ -4,12 +4,15 @@ import { VENUE_IMAGES, venueImage } from "../src/lib/venue-images";
 /**
  * Guards for the sport-level venue photo pools (src/lib/venue-images.ts).
  *
- * The pools were expanded from 4 stock photos per sport to 12–15 photos
- * that lead with real-facility photography (Vietnamese operator / guide
- * sites and Wikimedia Commons photos of named facilities), so the 30
- * venues of a sport stop repeating the same handful of images. Every URL
- * was download-verified (HTTP 200 + image content type with the site as
- * Referer) and visually checked before being added.
+ * The pools hold 12–13 photos per sport, almost entirely real-facility
+ * photography (Vietnamese operator / guide sites and Wikimedia Commons
+ * photos of named facilities), so the 30 venues of a sport stop
+ * repeating the same handful of images. Every URL was
+ * download-verified (HTTP 200 + image content type with the site as
+ * Referer) and visually checked as it renders in the card / hero crop
+ * before being added — an Oct 2026 audit replaced every entry that
+ * read as aerial, broadcast, portrait, close-up, school-hall,
+ * unfinished or derelict.
  */
 const SPORTS = [
   "cau-long",
@@ -70,15 +73,14 @@ describe("VENUE_IMAGES pools", () => {
       const realCount = VENUE_IMAGES[sport].filter(
         (url) => !stockHosts.has(new URL(url).hostname),
       ).length;
-      // Every pool carries at least 7 real-facility photos, and they are
-      // the majority everywhere except pickleball (7 of 15 — the
-      // scarcest sport for real-court photography, topped up with stock).
+      // Every pool carries at least 7 real-facility photos, and after
+      // the Oct 2026 audit they are the majority in every pool —
+      // badminton / tennis / basketball are 100% real; pickleball,
+      // mini football and swimming keep 1–2 legacy stock entries.
       expect(realCount, sport).toBeGreaterThanOrEqual(7);
-      if (sport !== "pickleball") {
-        expect(realCount, sport).toBeGreaterThan(
-          VENUE_IMAGES[sport].length / 2,
-        );
-      }
+      expect(realCount, sport).toBeGreaterThan(
+        VENUE_IMAGES[sport].length / 2,
+      );
     }
   });
 });
@@ -103,8 +105,12 @@ describe("venueImage", () => {
     expect(venueImage("cau-long", "smash-arena-thu-duc")).toContain(
       "qvbadminton.com",
     );
+    // PickleHub's override is a verified wide shot of the Guangzhou
+    // Metro Pickleball Center (Wikimedia Commons) — the namesake
+    // club's own site had no usable wide court photo (see
+    // src/lib/venue-images.ts).
     expect(venueImage("pickleball", "pickle-hub-binh-thanh")).toContain(
-      "pickleballtrungdoangiadinh.com",
+      "Guangzhou_Metro_Pickleball_Center",
     );
   });
 });

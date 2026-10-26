@@ -61,39 +61,47 @@ key, no runtime API calls, no DB column. Lookup order:
 
 1. **Per-venue photo from a real facility website** (`VENUE_PHOTOS`,
    keyed by venue slug). Each seed venue's photo was sourced from a real
-   Vietnamese sports-facility website of the same sport — the operator's
+   sports-facility website of the same sport — a Vietnamese operator's
    own site wherever one exists — and verified individually before being
    added: HTTP 200 + image content type with this site sent as `Referer`
    (hotlinking must actually work), the response body is a real image,
    and a visual check confirmed a wide shot of the actual court / hall /
    pool (no equipment close-ups, portraits, text-heavy banners or logos).
-   Sources: Smash Arena Thủ Đức and the pending Bình Thạnh venue —
-   Quốc Việt Badminton (`qvbadminton.com`, their own HCMC badminton
-   halls); PickleHub Bình Thạnh — CLB Pickleball Trung Đoàn Gia Định
-   (`pickleballtrungdoangiadinh.com`, the club's own site, HTTP-only);
-   Hoops Center Thủ Đức — 29 Ballers (`29ballers.com`, served from their
+   Sources: Smash Arena Thủ Đức — Quốc Việt Badminton
+   (`qvbadminton.com`, their own HCMC badminton hall); PickleHub Bình
+   Thạnh — the Guangzhou Metro Pickleball Center (Wikimedia Commons;
+   the namesake club's own site was re-checked in the Oct 2026 audit
+   and had no usable wide court photo — its other images are group /
+   podium photos, marketing banners and a CCTV still); the pending
+   Bình Thạnh venue — Shaheed Tajuddin Ahmad Indoor Stadium, Dhaka
+   (Wikimedia Commons; Quốc Việt's second hall photo is dominated by
+   a giant brand banner); Hoops Center Thủ Đức — 29 Ballers
+   (`29ballers.com`, served from their
    Supabase storage); Aqua Pool Quận 7 — Tôn Đức Thắng University
    (`international.tdtu.edu.vn`; the university's own Quận 7 pool is
    25 m × 13.5 m with 6 lanes, the same spec as the seed venue).
 2. **Sport-level pools** (`VENUE_IMAGES`, keyed by sport slug, picked
-   deterministically by hashing the venue slug). Each pool holds 12–15
-   photos and leads with **real facility photography**, so the 30 venues
-   of a sport stop repeating the same images: badminton 15 photos
-   (11 real), pickleball 15 (7 real), mini football 12 (8 real),
-   tennis 13 (9 real), basketball 15 (11 real), swimming 12 (8 real).
+   deterministically by hashing the venue slug). Each pool holds
+   12–13 photos of **real facilities**, so the 30 venues
+   of a sport stop repeating the same images: badminton 12 photos
+   (12 real), pickleball 12 (11 real), mini football 12 (10 real),
+   tennis 13 (13 real), basketball 12 (12 real), swimming 12 (11 real).
    The real entries are photos of actual courts / halls / pools from
    Vietnamese operator and sports-guide sites where usable shots could
    be verified (Cốc Cốc Badminton via `top3.vn`; HCMC basketball courts
    via `sonsanepoxy.vn`, `thethaothienlong.vn`, `hocbongro.com.vn`) and
-   from Wikimedia Commons (named facilities worldwide — e.g. Nimibutr
-   Stadium, Wimbledon, GBK Tennis Stadium, the Australian Institute of
-   Sport pool; files are CC BY / CC BY-SA / public domain, credited to
-   their Commons authors, served from `thumb.wikimedia.org`). The tail
-   of each pool keeps the earlier verified Unsplash / Pexels stock
-   entries; pickleball — the scarcest sport for real-court photography
-   (the HCMC listicle photos found were all watermarked, so they were
-   rejected) — adds a few extra stock top-ups, one of which depicts
-   Pickleball 1990, a real indoor club in Hanoi. Two venues resolve
+   from Wikimedia Commons (named facilities worldwide — e.g. the
+   Guangzhou Metro Pickleball Center, Oakmont Tennis Club, Teva Ocean
+   Arena, the Australian Institute of Sport pool; files are CC BY /
+   CC BY-SA / public domain, credited to
+   their Commons authors, served from `thumb.wikimedia.org`). Only
+   four legacy stock entries remain (one each at the tail of the
+   pickleball and swimming pools, two in mini football). A full visual
+   audit in Oct 2026 re-checked every entry as it renders in the
+   400×160 card / 800×256 hero crop and replaced anything that read as
+   aerial / drone, a broadcast or crowd frame, a portrait or equipment
+   close-up, a school / multi-purpose hall, or an unfinished or
+   derelict site. Two venues resolve
    here because no usable real-site photo could be verified for them:
    Sài Gòn Mini Football Q7 (candidate operators' own sites served only
    stock ball close-ups and marketing banners) and Riverside Tennis Q1

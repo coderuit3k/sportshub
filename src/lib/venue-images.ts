@@ -2,28 +2,32 @@
  * Venue photos.
  *
  * Primary strategy: one photo per seed venue, sourced from a REAL
- * Vietnamese sports-facility website of the same sport (the venue
- * operator's own site wherever one exists) — see VENUE_PHOTOS below, each
- * entry names its source website. Every URL was verified individually:
- * HTTP 200 + image content type with our own site sent as Referer
- * (hotlinking must work), the downloaded bytes are a real image, and a
- * visual check confirmed the photo shows that sport's actual court /
- * hall / pool in a wide shot (no equipment close-ups, portraits,
- * text-heavy banners or logos).
+ * sports-facility website of the same sport wherever a usable wide
+ * shot could be verified — see VENUE_PHOTOS below, each entry names
+ * its source. Every URL was verified individually: HTTP 200 + image
+ * content type with our own site sent as Referer (hotlinking must
+ * work), the downloaded bytes are a real image, and a visual check
+ * confirmed the photo shows that sport's actual court / hall / pool
+ * in a wide shot (no equipment close-ups, portraits, text-heavy
+ * banners or logos).
  *
  * Fallback: venues without a per-venue photo use the sport-level pool
  * (VENUE_IMAGES), picked deterministically by hashing the venue slug.
- * The pools are mostly REAL facility photography too: each pool leads
- * with photos of real courts / halls / pools — Vietnamese operator and
- * sports-guide sites where usable shots could be verified, plus
- * Wikimedia Commons photos of named facilities worldwide (CC-licensed,
- * see docs/architecture.md for the credit note) — and keeps the
- * earlier verified Unsplash / Pexels stock entries as the tail
- * (pickleball, the scarcest sport, adds a few extra stock top-ups).
- * Pool sizes: badminton 15, pickleball 15, mini football 12, tennis 13,
- * basketball 15, swimming 12. Unknown sports return null and VenueImage
- * renders the gradient + sport-emoji banner. No API key, no runtime
- * API calls, no DB column.
+ * The pools are real facility photography too: photos of real courts
+ * / halls / pools — Vietnamese operator and sports-guide sites where
+ * usable shots could be verified, plus Wikimedia Commons photos of
+ * named facilities worldwide (CC-licensed, see docs/architecture.md
+ * for the credit note). A full visual audit (Oct 2026) re-checked
+ * every pool entry as it renders in the 400x160 card / 800x256 hero
+ * crop and replaced anything that read as aerial / drone, a
+ * broadcast or crowd frame, a portrait or equipment close-up, a
+ * school / multi-purpose hall, or an unfinished or derelict site;
+ * nearly every pool is now 100% real-facility photos (pickleball
+ * keeps one legacy stock entry, mini football two, swimming one).
+ * Pool sizes: badminton 12, pickleball 12, mini football 12,
+ * tennis 13, basketball 12, swimming 12. Unknown sports return null
+ * and VenueImage renders the gradient + sport-emoji banner.
+ * No API key, no runtime API calls, no DB column.
  */
 const VENUE_PHOTOS: Record<string, string> = {
   // Smash Arena Thủ Đức (badminton, indoor) — Quốc Việt Badminton
@@ -31,11 +35,16 @@ const VENUE_PHOTOS: Record<string, string> = {
   // HCMC, green courts in play.
   "smash-arena-thu-duc":
     "https://qvbadminton.com/wp-content/uploads/2024/12/khong-gian-san-cau-long-quoc-viet-badminton-quan-7.jpg",
-  // PickleHub Bình Thạnh (pickleball) — CLB Pickleball Trung Đoàn Gia
-  // Định (pickleballtrungdoangiadinh.com, the club's own site): match
-  // action at the net on their blue indoor court. (HTTP-only host.)
+  // PickleHub Bình Thạnh (pickleball) — the Guangzhou Metro
+  // Pickleball Center at Pazhou Station (Wikimedia Commons): a vast
+  // indoor hall of pink / purple courts. The venue's namesake club
+  // site (pickleballtrungdoangiadinh.com) was re-checked in the Oct
+  // 2026 audit: its only court-level photo is a tight two-player shot
+  // at the net and everything else is a group / podium photo, a
+  // marketing banner or a CCTV still, so the override moved to this
+  // verified wide shot of a real pickleball centre.
   "pickle-hub-binh-thanh":
-    "http://pickleballtrungdoangiadinh.com/upload/news/pk1-1774757208.webp",
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b3/Guangzhou_Metro_Pickleball_Center%2C_Pazhou_Station%2C_Guangzhou_Metro_20251002.jpg/1280px-Guangzhou_Metro_Pickleball_Center%2C_Pazhou_Station%2C_Guangzhou_Metro_20251002.jpg",
   // Hoops Center Thủ Đức (basketball, indoor wooden floor) — 29 Ballers
   // (29ballers.com, a basketball-court booking site; image served from
   // their Supabase storage): empty indoor wooden basketball court.
@@ -48,136 +57,136 @@ const VENUE_PHOTOS: Record<string, string> = {
   "aqua-pool-q7":
     "https://international.tdtu.edu.vn/sites/international/files/International/Support/Ho-boi.jpg",
   // New Court Pending Bình Thạnh (badminton + pickleball, indoor) —
-  // Quốc Việt Badminton (qvbadminton.com, a badminton & pickleball
-  // operator): their empty indoor hall with nets up. The hall's own
-  // wall signage is visible, as on any real venue photo.
+  // Shaheed Tajuddin Ahmad Indoor Stadium, Dhaka (Wikimedia Commons):
+  // green badminton courts below the seating gallery. Quốc Việt
+  // Badminton's second hall photo was dropped in the Oct 2026 audit —
+  // a giant brand banner fills the centre of the frame.
   "new-court-pending-binh-thanh":
-    "https://qvbadminton.com/wp-content/uploads/2024/12/san-cau-long-quoc-viet-quan-7.jpg",
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8d/Seating_gallery_in_Shaheed_Tajuddin_Ahmad_Indoor_Stadium.jpg/1280px-Seating_gallery_in_Shaheed_Tajuddin_Ahmad_Indoor_Stadium.jpg",
   // No per-venue photo for sai-gon-mini-football-q7 or
   // riverside-tennis-q1: no usable wide shot of a real facility could
   // be verified on a Vietnamese operator's own website (the candidate
   // sites served only stock close-ups, player portraits or text-heavy
-  // marketing banners), so both fall through to the sport-level stock
-  // map below — see docs/architecture.md, "Venue photos".
+  // marketing banners), so both fall through to the sport-level pools
+  // below — see docs/architecture.md, "Venue photos".
 };
 /**
  * Sport-level photo pools, keyed by sport slug. Real-facility photos
- * lead each pool (sources named per entry); the venue slug hash picks
+ * throughout (sources named per entry); the venue slug hash picks
  * one deterministically, so a given venue always shows the same photo.
  */
 export const VENUE_IMAGES: Record<string, string[]> = {
-  // Cầu lông — 15 photos: 11 real-facility photos first,
-  // then the original verified stock entries.
+  // Cầu lông — 12 photos, all real facilities.
   "cau-long": [
     // indoor wooden badminton court mid-match at IIT Kharagpur (India) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7a/Badminton_Court_at_IIT_Kharagpur.jpg/1280px-Badminton_Court_at_IIT_Kharagpur.jpg",
     // empty multi-court indoor badminton hall — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/78/Indoor_badminton_court.jpg/1280px-Indoor_badminton_court.jpg",
-    // sports hall set up for badminton with games in progress, EuroGames 2024, Vienna — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/50/Badminton_venue_at_Eurogames_2024_in_Vienna.jpg/1280px-Badminton_venue_at_Eurogames_2024_in_Vienna.jpg",
-    // outdoor podium badminton court at Kai Chuen Court, Hong Kong — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0a/Kai_Chuen_Court_Badminton_Court.jpg/1280px-Kai_Chuen_Court_Badminton_Court.jpg",
-    // tournament courts inside Nimibutr Stadium, Bangkok (Thailand Masters) — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/Inside_Nimibutr_Stadium_-_Thailand_Masters_2025_%281%29.jpg/1280px-Inside_Nimibutr_Stadium_-_Thailand_Masters_2025_%281%29.jpg",
     // green courts with players at Lehragaga Stadium (India) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/View_of_badminton_court_at_stadium_Lehragaga.jpg/1280px-View_of_badminton_court_at_stadium_Lehragaga.jpg",
-    // school badminton tournament on a green hall court — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Schools_badminton1.jpg/1280px-Schools_badminton1.jpg",
     // Mei Lam Sports Centre hall, Hong Kong, badminton nets up — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/37/Mei_Lam_Stadium_Multi_Purpose_Arena_2017.jpg/1280px-Mei_Lam_Stadium_Multi_Purpose_Arena_2017.jpg",
-    // outdoor court at On Ting Estate, Hong Kong — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/On_Ting_Estate_Badminton_Court.jpg/1280px-On_Ting_Estate_Badminton_Court.jpg",
     // Queen Elizabeth Stadium hall, Hong Kong, badminton in play — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/HK_QueenElizabethStadium_MultiPurposeHall.jpg/1280px-HK_QueenElizabethStadium_MultiPurposeHall.jpg",
     // the club's own green indoor courts — Cốc Cốc Badminton, Bình Tân, HCMC (photo via top3.vn)
     "https://top3.vn/uploads/source/thevinh/cau-long/cau-long-coc-coc-binh-tan/2024-06-29-(1).webp",
-    "https://images.unsplash.com/photo-1614058585449-0aceebe022cc?auto=format&fit=crop&w=1200&q=80",
-    "https://images.pexels.com/photos/7438732/pexels-photo-7438732.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/8007162/pexels-photo-8007162.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/8007405/pexels-photo-8007405.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    // teal mats in the wood-panelled hall at IIT Delhi (India) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Badminton_Court_at_IITD.jpg/1280px-Badminton_Court_at_IITD.jpg",
+    // rooftop courts with nets up at Tin Fu Court, Hong Kong — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Tin_Fu_Court_Badminton_Court.jpg/1280px-Tin_Fu_Court_Badminton_Court.jpg",
+    // outdoor courts with nets between the towers of Hung Fuk Estate, Hong Kong — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b6/Hung_Fuk_Estate_Badminton_Court_201512.jpg/1280px-Hung_Fuk_Estate_Badminton_Court_201512.jpg",
+    // blue outdoor court with net at Tin Shing Court, Hong Kong — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fe/Tin_Shing_Court_Badminton_Court.jpg/1280px-Tin_Shing_Court_Badminton_Court.jpg",
+    // blue outdoor court at Kam Tai Court, Hong Kong — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/Kam_Tai_Court_Badminton_Court_201712.jpg/1280px-Kam_Tai_Court_Badminton_Court_201712.jpg",
+    // club tournament on green mats in a wooden hall (France) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/58/Tournoi_badminton_280913_12.JPG/1280px-Tournoi_badminton_280913_12.JPG",
   ],
-  // Pickleball — 15 photos: 7 real-facility photos first,
-  // then the original verified stock entries plus 4 stock top-ups.
+  // Pickleball — 12 photos: 11 real facilities, then one legacy
+  // verified stock entry.
   pickleball: [
-    // aerial view of a full pickleball complex with games in progress — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/19/Aerial_Pickleball_Courts.jpg/1280px-Aerial_Pickleball_Courts.jpg",
     // blue/green courts at Harry B. Anderson Tennis Center, Green Bay (USA) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_1-3.jpg/1280px-Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_1-3.jpg",
-    // aerial view of eight blue courts in La Crosse, Wisconsin — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Pickleball_court_in_La_Crosse%2C_Wisconsin_01.jpg/1280px-Pickleball_court_in_La_Crosse%2C_Wisconsin_01.jpg",
-    // aerial view of two outdoor courts — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Outdoor_pickleball_courts.jpg/1280px-Outdoor_pickleball_courts.jpg",
     // urban courts at Hunter's Point Community Park, New York — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/Hunter%27s_Pt_Community_Pk_td_%282023-08-21%29_04.jpg/1280px-Hunter%27s_Pt_Community_Pk_td_%282023-08-21%29_04.jpg",
-    // indoor court inside the Plankinton Arcade atrium, Milwaukee — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Milwaukee_November_2022_34_%28Plankinton_Arcade_pickleball_court%29.jpg/1280px-Milwaukee_November_2022_34_%28Plankinton_Arcade_pickleball_court%29.jpg",
     // doubles action at the net on an outdoor court — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f7/Pickleball_Pros.jpg/1280px-Pickleball_Pros.jpg",
+    // outdoor courts at dusk, Poliforum, Playa del Carmen (Mexico) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e8/20251212_pickleball_pitch_poliforum_playa_del_carmen.jpg/1280px-20251212_pickleball_pitch_poliforum_playa_del_carmen.jpg",
+    // indoor courts inside the Bell Works building (USA) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/40/Bell_Works_Interior_Pickleball_Court_%28December_2025%29.jpg/1280px-Bell_Works_Interior_Pickleball_Court_%28December_2025%29.jpg",
+    // courts 10-12 at Harry B. Anderson Tennis Center, Green Bay — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_10-12.jpg/1280px-Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_10-12.jpg",
+    // courts 4-6 at Harry B. Anderson Tennis Center, Green Bay — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/02/Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_4-6.jpg/1280px-Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_4-6.jpg",
+    // courts 7-9 at Harry B. Anderson Tennis Center, Green Bay — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/32/Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_7-9.jpg/1280px-Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_7-9.jpg",
+    // a second bank of urban courts at Hunter's Point Community Park, New York — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a0/Hunter%27s_Pt_Community_Pk_td_%282023-08-21%29_05.jpg/1280px-Hunter%27s_Pt_Community_Pk_td_%282023-08-21%29_05.jpg",
+    // games under the timber roof of Parc du Pré-Vert (France) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Parc_du_Pr%C3%A9-Vert%2C_terrains_de_pickleball.jpg/1280px-Parc_du_Pr%C3%A9-Vert%2C_terrains_de_pickleball.jpg",
+    // purple / blue courts at Polideportivo Municipal Gallur, Madrid — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Pistas_de_pickleball_en_Madrid_Espa%C3%B1a%2C_Polideportivo_Municipal_Gallur.jpg/1280px-Pistas_de_pickleball_en_Madrid_Espa%C3%B1a%2C_Polideportivo_Municipal_Gallur.jpg",
+    // legacy stock: net-level view across blue / green courts — Pexels
     "https://images.pexels.com/photos/29820786/pexels-photo-29820786.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/37143606/pexels-photo-37143606.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/29439337/pexels-photo-29439337.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/17299530/pexels-photo-17299530.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    // stock top-up: player in action at Pickleball 1990, a real indoor club in Hanoi
-    "https://images.pexels.com/photos/29439346/pexels-photo-29439346.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    // stock top-up: sunlit empty court with long net shadows
-    "https://images.pexels.com/photos/29820785/pexels-photo-29820785.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    // stock top-up: top-down view of blue courts and nets
-    "https://images.pexels.com/photos/29821186/pexels-photo-29821186.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    // stock top-up: a player hitting indoors against the green hall wall
-    "https://images.pexels.com/photos/32975182/pexels-photo-32975182.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
-  // Bóng đá mini — 12 photos: 8 real-facility photos first,
-  // then the original verified stock entries.
+  // Bóng đá mini — 12 photos: 10 real facilities, then the two
+  // original verified stock entries.
   "bong-da-mini": [
-    // goalkeeper action at the 2018 Youth Olympics futsal final, Buenos Aires — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/20/2018-10-18_Futsal_%28Boys_Final%29_at_2018_Summer_Youth_Olympics_by_Sandro_Halank%E2%80%93050.jpg/1280px-2018-10-18_Futsal_%28Boys_Final%29_at_2018_Summer_Youth_Olympics_by_Sandro_Halank%E2%80%93050.jpg",
-    // futsal arena at the 2016 AFC Championship (Japan v Vietnam), Tashkent — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/2016_Futsal_Japan_vs_Vietnam_a.JPG/1280px-2016_Futsal_Japan_vs_Vietnam_a.JPG",
     // outdoor turf futsal courts at Yoyogi, Tokyo — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Tokyo_Yoyogi_futsal_court.JPG/1280px-Tokyo_Yoyogi_futsal_court.JPG",
-    // school sports courts incl. futsal at ACS Barker Road, Singapore — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/ACS%28BR%29_Futsal_Court.JPG/1280px-ACS%28BR%29_Futsal_Court.JPG",
     // caged turf pitch with a game in progress (KPU, Canada) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/KPU_Futsal_Court.jpg/1280px-KPU_Futsal_Court.jpg",
-    // covered courts at Delta Sport Centre, Singapore, seen from the gallery — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/85/Converted_pickleball_courts%2C_futsal_court_and_hockey_pitch_at_Delta_Sport_Centre.jpg/1280px-Converted_pickleball_courts%2C_futsal_court_and_hockey_pitch_at_Delta_Sport_Centre.jpg",
     // outdoor futsal courts at Complejo Deportivo Sur (Spain) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7a/Pistas_de_futsal_del_Complejo_Deportivo_Sur.jpg/1280px-Pistas_de_futsal_del_Complejo_Deportivo_Sur.jpg",
-    // match action, Portugal v Japan, 2018 Youth Olympics girls' final — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/2018-10-17_Futsal_POR_vs_JPN_%28Girls_Final%29_at_2018_Summer_Youth_Olympics_by_Sandro_Halank%E2%80%930311.jpg/1280px-2018-10-17_Futsal_POR_vs_JPN_%28Girls_Final%29_at_2018_Summer_Youth_Olympics_by_Sandro_Halank%E2%80%930311.jpg",
+    // indoor dome turf pitch at Aoba Sports Park (Japan) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/Aoba_Sports_park_-_soccer_court.jpg/1280px-Aoba_Sports_park_-_soccer_court.jpg",
+    // empty outdoor turf pitch with a goal — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/93/Futsal_Court.jpg/1280px-Futsal_Court.jpg",
+    // blue court inside Teva Ocean Arena (Japan), from the gallery — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/Teva_Ocean_Arena_futsal.JPG/1280px-Teva_Ocean_Arena_futsal.JPG",
+    // evening game on a caged turf pitch at Klet Kaeo (Thailand) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8b/DFC_5329_Evening_kickabout_in_Klet_Kaeo_-_teammates_line_up_as_a_player_strikes_the_ball_on_the_artificial_turf.jpg/1280px-DFC_5329_Evening_kickabout_in_Klet_Kaeo_-_teammates_line_up_as_a_player_strikes_the_ball_on_the_artificial_turf.jpg",
+    // wide turf field at Stanton Street Courts, New York — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/Stanton_Street_Courts_td_%282018-12-31%29_22_-_Nike_Field.jpg/1280px-Stanton_Street_Courts_td_%282018-12-31%29_22_-_Nike_Field.jpg",
+    // floodlit striped turf pitch at night with a game on (Vietnam) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/53/Bong_da_mini.jpg/1280px-Bong_da_mini.jpg",
+    // caged community pitch at Calthorpe Community Garden, London — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/Futsal_pitch%2C_Calthorpe_Community_Garden_-_geograph.org.uk_-_4534718.jpg/1280px-Futsal_pitch%2C_Calthorpe_Community_Garden_-_geograph.org.uk_-_4534718.jpg",
     "https://images.pexels.com/photos/36681531/pexels-photo-36681531.jpeg?auto=compress&cs=tinysrgb&w=1200",
     "https://images.pexels.com/photos/28271652/pexels-photo-28271652.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/33620335/pexels-photo-33620335.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/34007009/pexels-photo-34007009.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
-  // Quần vợt — 13 photos: 9 real-facility photos first,
-  // then the original verified stock entries.
+  // Quần vợt — 13 photos, all real facilities (Wikimedia Commons).
   "quan-vot": [
-    // aerial view of blue hard courts in Ajax (Canada), players on court — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4e/Aerial_Photograph_of_Tennis_Courts_in_Ajax_-_Discover_The_Town_Of_Ajax_%2801m14s%29.jpg/1280px-Aerial_Photograph_of_Tennis_Courts_in_Ajax_-_Discover_The_Town_Of_Ajax_%2801m14s%29.jpg",
-    // aerial view of clay courts in Cologne (Germany) — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/Aerial_view_of_tennis_courts_in_Cologne%2C_Germany_%2850390585946%29.jpg/1280px-Aerial_view_of_tennis_courts_in_Cologne%2C_Germany_%2850390585946%29.jpg",
-    // clay courts at Poller Wiesen, Cologne — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9d/Tennis_courts_at_Poller_Wiesen_in_Cologne%2C_Germany_%2848988353677%29.jpg/1280px-Tennis_courts_at_Poller_Wiesen_in_Cologne%2C_Germany_%2848988353677%29.jpg",
-    // the court complex at IMG Academy, Bradenton (USA), from above — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bd/Tennis_Courts_IMG_Academy_-_Bradenton.jpg/1280px-Tennis_Courts_IMG_Academy_-_Bradenton.jpg",
-    // clay courts of Idsteiner Tennis-Club (Germany), from above — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Tennispl%C3%A4tze_Idsteiner_Tennis-Club_Gr%C3%BCn-Wei%C3%9F-0846.jpg/1280px-Tennispl%C3%A4tze_Idsteiner_Tennis-Club_Gr%C3%BCn-Wei%C3%9F-0846.jpg",
-    // the All England Club, Wimbledon, from above — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/49/Uk_london_wimbeldon_courts.jpg/1280px-Uk_london_wimbeldon_courts.jpg",
-    // GBK Tennis Outdoor Stadium, Jakarta — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3b/GBK_Tennis_Outdoor_Stadium.jpg/1280px-GBK_Tennis_Outdoor_Stadium.jpg",
-    // lakeside clay courts of TuS Haltern am See (Germany), from above — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/14/Haltern_am_See%2C_TUS-Tennis_--_2014_--_9105.jpg/1280px-Haltern_am_See%2C_TUS-Tennis_--_2014_--_9105.jpg",
-    // clay courts in Oslo (Norway), from above — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Tennis_courts_in_Oslo_aerial.jpg/1280px-Tennis_courts_in_Oslo_aerial.jpg",
-    "https://images.unsplash.com/photo-1465125672495-63cdc2fa22ed?auto=format&fit=crop&w=1200&q=80",
-    "https://images.pexels.com/photos/35564300/pexels-photo-35564300.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/37112832/pexels-photo-37112832.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/8224639/pexels-photo-8224639.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    // blue hard courts in Németvölgy, Budapest — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/14._Hegyvid%C3%A9k-Olympiade%2C_Tennisplatz%2C_2024_N%C3%A9metv%C3%B6lgy.jpg/1280px-14._Hegyvid%C3%A9k-Olympiade%2C_Tennisplatz%2C_2024_N%C3%A9metv%C3%B6lgy.jpg",
+    // a second court at the same Németvölgy club, Budapest — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e8/14._Hegyvid%C3%A9k-Olympiade%2C_Tennisplatz%2C_O%2C_2024_N%C3%A9metv%C3%B6lgy.jpg/1280px-14._Hegyvid%C3%A9k-Olympiade%2C_Tennisplatz%2C_O%2C_2024_N%C3%A9metv%C3%B6lgy.jpg",
+    // clay court at Oakmont Tennis Club, Allentown (USA) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/79/2019_-_Oakmont_Tennis_Club_-_Court_-_Allentown_PA.jpg/1280px-2019_-_Oakmont_Tennis_Club_-_Court_-_Allentown_PA.jpg",
+    // floodlit clay-court complex (AEC outdoor courts) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8e/AEC_Outdoor_Tennis_Courts.png/1280px-AEC_Outdoor_Tennis_Courts.png",
+    // grass courts in play at Nottingham Tennis Centre (geograph) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Outdoor_courts%2C_Nottingham_Tennis_Centre_-_geograph.org.uk_-_7416683.jpg/1280px-Outdoor_courts%2C_Nottingham_Tennis_Centre_-_geograph.org.uk_-_7416683.jpg",
+    // green hard courts at David Lloyd Tennis Club, York (geograph) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e5/Tennis_Court_at_David_Lloyd_Tennis_Club_York_-_geograph.org.uk_-_5872789.jpg/1280px-Tennis_Court_at_David_Lloyd_Tennis_Club_York_-_geograph.org.uk_-_5872789.jpg",
+    // hard courts at Plaxtol & Shipbourne Tennis Club, Kent — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e7/Tennis_courts%2C_Plaxtol_%26_Shipbourne_Tennis_Club%2C_Shipbourne%2C_Kent_-_June_2026_-_01.jpg/1280px-Tennis_courts%2C_Plaxtol_%26_Shipbourne_Tennis_Club%2C_Shipbourne%2C_Kent_-_June_2026_-_01.jpg",
+    // red / green hard courts at Framlingham Sports Club (geograph) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Framlingham_Sports_Club_Tennis_Courts_-_geograph.org.uk_-_2435764.jpg/1280px-Framlingham_Sports_Club_Tennis_Courts_-_geograph.org.uk_-_2435764.jpg",
+    // grass courts at The Northern Tennis Club, West Didsbury — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f6/The_Northern_Tennis_Club_in_West_Didsbury.jpg/1280px-The_Northern_Tennis_Club_in_West_Didsbury.jpg",
+    // clay courts at Braddon Tennis Club, Canberra — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Braddon_Tennis_Club_October_2025.jpg/1280px-Braddon_Tennis_Club_October_2025.jpg",
+    // clay court seen down the net, Melbourne — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/85/Clay_tennis_courts_melbourne_looking_down_the_net.jpg/1280px-Clay_tennis_courts_melbourne_looking_down_the_net.jpg",
+    // hard courts in the woods at Normandy Tennis Club, Surrey — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/86/Courts_1_and_2%2C_Normandy_Tennis_Club%2C_Hunts_Hill_Road%2C_Normandy%2C_Surrey.jpg/1280px-Courts_1_and_2%2C_Normandy_Tennis_Club%2C_Hunts_Hill_Road%2C_Normandy%2C_Surrey.jpg",
+    // club clay courts with a game on (geograph) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Tennis_courts_%28geograph_7558513%29.jpg/1280px-Tennis_courts_%28geograph_7558513%29.jpg",
   ],
-  // Bóng rổ — 15 photos: 11 real-facility photos first,
-  // then the original verified stock entries.
+  // Bóng rổ — 12 photos, all real facilities.
   "bong-ro": [
     // outdoor court in HCMC — photo from sonsanepoxy.vn's HCMC courts guide
     "https://sonsanepoxy.vn/storage/news/san-bong-ro-tphcm.jpg",
@@ -195,19 +204,17 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     "https://hocbongro.com.vn/wp-content/uploads/2020/01/san-bong-ro-mien-phi-o-tphcm.jpg",
     // red/green campus court, HCMC — hocbongro.com.vn
     "https://hocbongro.com.vn/wp-content/uploads/2020/01/san-bong-ro-sai-gon.jpg",
-    // night court at Havukoski youth centre, Vantaa (Finland) — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Autumn_night_at_basketball_court_at_Havukoski_youth_centre%2C_Havukoski%2C_Vantaa%2C_Finland%2C_2021_October.jpg/1280px-Autumn_night_at_basketball_court_at_Havukoski_youth_centre%2C_Havukoski%2C_Vantaa%2C_Finland%2C_2021_October.jpg",
-    // indoor arena court at Jamia Millia Islamia, New Delhi — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f7/Basketball_Court%2C_Jamia_Millia_Islamia%2C_New_Delhi.jpg/1280px-Basketball_Court%2C_Jamia_Millia_Islamia%2C_New_Delhi.jpg",
-    // seaside court at La Perla, San Juan (Puerto Rico) — Wikimedia Commons
-    "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1d/Basketball_court_at_La_Perla_in_San_Juan%2C_Puerto_Rico.jpg/1280px-Basketball_court_at_La_Perla_in_San_Juan%2C_Puerto_Rico.jpg",
-    "https://images.unsplash.com/photo-1494199505258-5f95387f933c?auto=format&fit=crop&w=1200&q=80",
-    "https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?auto=format&fit=crop&w=1200&q=80",
-    "https://images.pexels.com/photos/15783797/pexels-photo-15783797.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/19514919/pexels-photo-19514919.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    // wide empty courts at Astoria Heights Playground, New York — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Astoria_Heights_Playground_td_%282022-10-03%29_03_-_Basketball_Courts.jpg/1280px-Astoria_Heights_Playground_td_%282022-10-03%29_03_-_Basketball_Courts.jpg",
+    // blue / green park courts at Campbell Park (Australia) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/09/Basketball_courts_at_Campbell_Park.jpg/1280px-Basketball_courts_at_Campbell_Park.jpg",
+    // indoor courts in the Lanman Center at Yale University — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a2/Basketball_courts_in_the_Lanman_Center_at_Payne_Whitney_Gymnasium_at_Yale_University%2C_2018.jpg/1280px-Basketball_courts_in_the_Lanman_Center_at_Payne_Whitney_Gymnasium_at_Yale_University%2C_2018.jpg",
+    // game on the red / grey Zone Six court, Đống Đa, Hanoi — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Basketball_game%2C_%C4%90%E1%BB%91ng_%C4%90a%2C_Hanoi%2C_May_2023.jpg/1280px-Basketball_game%2C_%C4%90%E1%BB%91ng_%C4%90a%2C_Hanoi%2C_May_2023.jpg",
   ],
-  // Bơi lội — 12 photos: 8 real-facility photos first,
-  // then the original verified stock entries.
+  // Bơi lội — 12 photos: 11 real facilities, then one legacy
+  // verified stock entry.
   "boi-loi": [
     // outdoor lane pool at Bellbowrie, Brisbane — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Bellbowrie_swimming_pool%2C_main_pool_with_lanes%2C_2025.jpg/1280px-Bellbowrie_swimming_pool%2C_main_pool_with_lanes%2C_2025.jpg",
@@ -225,10 +232,14 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/Monroe_Community_College_Swimming_Pool.jpg/1280px-Monroe_Community_College_Swimming_Pool.jpg",
     // indoor pool at Runcorn Swimming Pool (UK) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/55/Access_ramp_on_indoor_pool%2C_Runcorn_Swimming_Pool%2C_Runcorn_DSCF6198.jpg/1280px-Access_ramp_on_indoor_pool%2C_Runcorn_Swimming_Pool%2C_Runcorn_DSCF6198.jpg",
+    // classic indoor pool hall with a diving platform — Wikimedia Commons (Flickr)
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Indoor_Pool_%2814859634373%29.jpg/1280px-Indoor_Pool_%2814859634373%29.jpg",
+    // race in progress at a public competition pool, Melbourne — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Public_Swimming_Pool_in_Melbourne_VIC_Australia.jpg/1280px-Public_Swimming_Pool_in_Melbourne_VIC_Australia.jpg",
+    // green-lit indoor lane pool at Ulju Youth Center (Korea) — Wikimedia Commons
+    "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Ulju_youth_center_swimming_pool_20170312_153937.jpg/1280px-Ulju_youth_center_swimming_pool_20170312_153937.jpg",
+    // legacy stock: indoor lane pool with chairs behind glass — Pexels
     "https://images.pexels.com/photos/40068492/pexels-photo-40068492.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/19073612/pexels-photo-19073612.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/9030294/pexels-photo-9030294.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/8028692/pexels-photo-8028692.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
 };
 
@@ -243,8 +254,8 @@ function stableHash(text: string): number {
 
 /**
  * Photo URL for a venue: the per-venue real-facility photo when one is
- * mapped, otherwise a deterministic pick from the primary sport's stock
- * photos (stable hash of the venue slug, so a given venue's photo never
+ * mapped, otherwise a deterministic pick from the primary sport's pool
+ * (stable hash of the venue slug, so a given venue's photo never
  * changes between loads). Returns null when neither applies.
  */
 export function venueImage(
