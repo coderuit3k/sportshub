@@ -48,6 +48,18 @@ import { CATALOG_VENUES, REMOVED_VENUE_SLUGS, SPORT_DEFS, type CatalogVenue } fr
 /** The seed owner account that owns every catalog venue. */
 export const CATALOG_OWNER_EMAIL = "owner@sportshub.local";
 
+/**
+ * Interactive-transaction options for the per-venue insert/delete
+ * transactions below. Prisma's default timeout is 5 s, but each of
+ * these transactions runs ~15 sequential round trips from the Vercel
+ * build region (iad1) to the database (Singapore) — the 2026-10-26
+ * removal of san-pickleball-sao-mai died at 5.2 s on exactly that
+ * default while its nine sibling transactions squeaked through at
+ * ~4 s. 60 s gives the same work ample headroom without letting a
+ * genuinely stuck transaction hang the build.
+ */
+const TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 };
+
 type Db = PrismaClient;
 
 async function getOrCreateCatalogOwner(prisma: Db) {
@@ -155,7 +167,7 @@ export async function insertCatalogVenue(
         ),
       });
     }
-  });
+  }, TX_OPTIONS);
   return venueId;
 }
 
@@ -235,7 +247,7 @@ async function deleteRetiredVenue(prisma: Db, venueId: string): Promise<void> {
     await tx.venueImage.deleteMany({ where: { venueId } });
     await tx.venueStaff.deleteMany({ where: { venueId } });
     await tx.venue.delete({ where: { id: venueId } });
-  });
+  }, TX_OPTIONS);
 }
 
 /**
