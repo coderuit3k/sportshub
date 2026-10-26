@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getAvailability } from "@/services/bookings";
 import { todayDateISO, formatTimeHHMM } from "@/lib/time/tz";
 import { BookingWidget, FavoriteButton } from "@/components/client-widgets";
+import VenueDetailMapSection from "@/components/VenueDetailMapSection";
 import VenueImage from "@/components/VenueImage";
 import SportIcon from "@/components/SportIcon";
 import AmenityIcon from "@/components/AmenityIcon";
@@ -60,13 +61,12 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
   const priceRows = venue.facilities[0]?.priceRules ?? [];
   // Keyless maps (no API key / no maps provider account):
   // - "Chỉ đường" deep-links to Google Maps directions with a text query.
-  // - The OpenStreetMap embed renders ONLY when the venue has coordinates;
-  //   without them the section degrades to the directions link alone.
+  // - The map is a Leaflet view over OpenStreetMap raster tiles (no
+  //   WebGL needed, unlike the OSM embed iframe) and renders ONLY when
+  //   the venue has coordinates; without them the section degrades to
+  //   the directions link alone.
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${venue.name} — ${venue.address}, ${venue.district}, ${venue.city}`)}`;
   const hasCoords = venue.latitude != null && venue.longitude != null;
-  const osmEmbedUrl = hasCoords
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${venue.longitude! - 0.006}%2C${venue.latitude! - 0.004}%2C${venue.longitude! + 0.006}%2C${venue.latitude! + 0.004}&layer=mapnik&marker=${venue.latitude}%2C${venue.longitude}`
-    : null;
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
       <div className="space-y-6">
@@ -102,14 +102,9 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
           <a href={directionsUrl} target="_blank" rel="noreferrer" className="btn-primary mt-3 inline-flex items-center gap-2">
             <Navigation className="h-4 w-4" /> {t("directions")}
           </a>
-          {osmEmbedUrl && (
+          {hasCoords && (
             <>
-              <iframe
-                title={t("mapTitle", { name: venue.name })}
-                src={osmEmbedUrl}
-                className="mt-4 h-64 w-full rounded-2xl border"
-                loading="lazy"
-              />
+              <VenueDetailMapSection latitude={venue.latitude!} longitude={venue.longitude!} />
               <p className="mt-1 text-xs text-slate-400">{t("mapCaption")}</p>
             </>
           )}
