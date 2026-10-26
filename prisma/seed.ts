@@ -108,11 +108,12 @@ async function main() {
     }
   }
 
-  // Generated catalog (prisma/venue-catalog.ts): +29 venues per sport,
-  // inserted through the same ensure-step production uses, so a fresh
-  // local DB ends up with exactly 30 APPROVED venues per sport.
+  // Generated catalog (prisma/venue-catalog.ts): 164 venues after the
+  // owner's 2026-10-26 trim, inserted through the same ensure-step
+  // production uses, so a fresh local DB ends up with 170 APPROVED
+  // venues (30 / 27 / 27 / 30 / 30 / 26 per sport).
   const catalog = await ensureVenueCatalog(prisma);
-  console.log(`Catalog venues: +${catalog.inserted} inserted, ${catalog.skipped} already present`);
+  console.log(`Catalog venues: +${catalog.inserted} inserted, ${catalog.skipped} already present, ${catalog.removed} retired removed`);
 
   // Reviews (marked seed)
   const reviewTexts = ["Sân đẹp, đèn sáng, đặt rất nhanh.", "Mặt sân tốt, nhân viên thân thiện.", "Giá hợp lý giờ thấp điểm."];

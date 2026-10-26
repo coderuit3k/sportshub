@@ -11,8 +11,8 @@
  *   users — so repeat runs are a no-op once the catalog is complete.
  *
  * Failure behaviour (hardened after the 2026-10-25 production incident,
- * where a build was interrupted mid-catalog and shipped 74/180 venues
- * silently):
+ * where a build was interrupted mid-catalog and shipped 74 of the
+ * then-180 venues silently):
  * - Every venue is inserted in ONE transaction, so a venue is never
  *   left half-written (row without its sport link / facilities).
  * - A venue that exists but is incomplete (e.g. missing its primary
@@ -25,6 +25,12 @@
  *   and linked to its primary sport. Any failure or missing venue makes
  *   the step throw, which fails prisma/deploy-db.ts (exit 1) and
  *   therefore the build — a partial catalog can never ship silently.
+ * - Owner-removed venues (REMOVED_VENUE_SLUGS in venue-catalog.ts,
+ *   trimmed 2026-10-26) are deleted — with all their children — at
+ *   the start of every run, so databases seeded before the trim
+ *   converge too. A removed venue that somehow has bookings is NOT
+ *   deleted; it is reported and the step throws like any other
+ *   incompleteness.
  *
  * Ownership: catalog venues belong to the seed owner account
  * (owner@sportshub.local). The ensure-step get-or-creates that account
@@ -34,7 +40,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { CATALOG_VENUES, SPORT_DEFS, type CatalogVenue } from "./venue-catalog";
+import { CATALOG_VENUES, REMOVED_VENUE_SLUGS, SPORT_DEFS, type CatalogVenue } from "./venue-catalog";
 
 /** The seed owner account that owns every catalog venue. */
 export const CATALOG_OWNER_EMAIL = "owner@sportshub.local";
@@ -155,19 +161,86 @@ export interface EnsureCatalogResult {
   skipped: number;
   /** Incomplete rows (present but missing the primary sport link) that were deleted and re-inserted. */
   repaired: number;
+  /** Owner-removed venues (REMOVED_VENUE_SLUGS) deleted by this run's removal pass. */
+  removed: number;
   /** Venues that could not be inserted/repaired this run. Non-zero ⇒ the step throws after the summary. */
   failed: number;
 }
 
+interface RemovalOutcome {
+  removed: number;
+  /** Removed-slug venues that still exist because they have bookings — the step must fail. */
+  blocked: Array<{ slug: string; bookings: number }>;
+}
+
 /**
- * Idempotently top the database up to the full generated catalog.
+ * Delete the owner-removed venues (REMOVED_VENUE_SLUGS) together with
+ * ALL of their children, one transaction per venue. Children are
+ * deleted explicitly (rather than relying on schema cascades alone)
+ * so nothing is left pointing at a venue that no longer exists:
+ * price rules + blocked times via the facilities, then reviews,
+ * favorites, sessions (their participants cascade), facilities,
+ * sport links, amenities, operating hours, images and staff rows.
  *
- * Processes EVERY catalog venue even if individual ones fail, then
- * verifies completeness and throws if anything failed or is missing —
- * callers (prisma/deploy-db.ts) turn that into a non-zero exit, so a
+ * A venue with ANY booking is never deleted — bookings are financial
+ * records, not catalog data. It is collected as blocked and the
+ * caller fails the step loudly so a human can clean it up manually.
+ */
+async function removeRemovedVenues(prisma: Db): Promise<RemovalOutcome> {
+  let removed = 0;
+  const blocked: Array<{ slug: string; bookings: number }> = [];
+  for (const slug of REMOVED_VENUE_SLUGS) {
+    const venue = await prisma.venue.findUnique({ where: { slug }, select: { id: true } });
+    if (!venue) continue;
+    const bookings = await prisma.booking.count({ where: { venueId: venue.id } });
+    if (bookings > 0) {
+      blocked.push({ slug, bookings });
+      console.error(
+        `[catalog] REFUSED removal of retired venue ${slug}: it has ${bookings} booking(s) — manual cleanup required`,
+      );
+      continue;
+    }
+    await prisma.$transaction(async (tx) => {
+      const facilities = await tx.facility.findMany({
+        where: { venueId: venue.id },
+        select: { id: true },
+      });
+      const facilityIds = facilities.map((f) => f.id);
+      if (facilityIds.length > 0) {
+        await tx.priceRule.deleteMany({ where: { facilityId: { in: facilityIds } } });
+        await tx.blockedTime.deleteMany({ where: { facilityId: { in: facilityIds } } });
+      }
+      await tx.blockedTime.deleteMany({ where: { venueId: venue.id } });
+      await tx.review.deleteMany({ where: { venueId: venue.id } });
+      await tx.favorite.deleteMany({ where: { venueId: venue.id } });
+      await tx.sportsSession.deleteMany({ where: { venueId: venue.id } });
+      await tx.facility.deleteMany({ where: { venueId: venue.id } });
+      await tx.venueSport.deleteMany({ where: { venueId: venue.id } });
+      await tx.venueAmenity.deleteMany({ where: { venueId: venue.id } });
+      await tx.operatingHour.deleteMany({ where: { venueId: venue.id } });
+      await tx.venueImage.deleteMany({ where: { venueId: venue.id } });
+      await tx.venueStaff.deleteMany({ where: { venueId: venue.id } });
+      await tx.venue.delete({ where: { id: venue.id } });
+    });
+    removed += 1;
+    console.log(`[catalog] removed owner-retired venue ${slug}`);
+  }
+  return { removed, blocked };
+}
+
+/**
+ * Idempotently converge the database onto the generated catalog.
+ *
+ * First deletes any owner-removed venues (REMOVED_VENUE_SLUGS,
+ * booking-guarded), then processes EVERY catalog venue even if
+ * individual ones fail, then verifies completeness — every catalog
+ * venue present and linked, and no removed venue left behind — and
+ * throws if anything failed, is missing, or could not be removed.
+ * Callers (prisma/deploy-db.ts) turn that into a non-zero exit, so a
  * partial catalog fails the build instead of shipping silently.
  */
 export async function ensureVenueCatalog(prisma: Db): Promise<EnsureCatalogResult> {
+  const removal = await removeRemovedVenues(prisma);
   const owner = await getOrCreateCatalogOwner(prisma);
   const sportIds = await getOrCreateSports(prisma);
   const catalogSlugs = CATALOG_VENUES.map((v) => v.slug);
@@ -235,22 +308,34 @@ export async function ensureVenueCatalog(prisma: Db): Promise<EnsureCatalogResul
   }
 
   // Final verification: re-read state and require EVERY catalog venue to
-  // be present and linked to its primary sport.
+  // be present and linked to its primary sport — and NONE of the
+  // owner-removed venues to still exist.
   const finalState = await loadState();
   const missing = CATALOG_VENUES.filter((def) => !isComplete(finalState, def)).map(
     (def) => def.slug,
   );
+  const retiredStillPresent = (
+    await prisma.venue.findMany({
+      where: { slug: { in: [...REMOVED_VENUE_SLUGS] } },
+      select: { slug: true },
+    })
+  ).map((v) => v.slug);
 
   console.log(
     `[catalog] ensure summary: inserted=${inserted} skipped=${skipped} ` +
-      `repaired=${repaired} failed=${failures.length} missing=${missing.length}`,
+      `repaired=${repaired} removed=${removal.removed} removalBlocked=${removal.blocked.length} ` +
+      `failed=${failures.length} missing=${missing.length} retiredStillPresent=${retiredStillPresent.length}`,
   );
-  if (failures.length > 0 || missing.length > 0) {
+  if (failures.length > 0 || missing.length > 0 || removal.blocked.length > 0 || retiredStillPresent.length > 0) {
     throw new Error(
       `ensureVenueCatalog incomplete: ${failures.length} venue(s) failed ` +
         `[${failures.map((f) => f.slug).join(", ")}]; ${missing.length} venue(s) ` +
-        `missing/incomplete after run [${missing.join(", ")}]`,
+        `missing/incomplete after run [${missing.join(", ")}]; ` +
+        `${removal.blocked.length} retired venue(s) blocked by bookings ` +
+        `[${removal.blocked.map((b) => `${b.slug} (${b.bookings} bookings)`).join(", ")}]; ` +
+        `${retiredStillPresent.length} retired venue(s) still present ` +
+        `[${retiredStillPresent.join(", ")}]`,
     );
   }
-  return { inserted, skipped, repaired, failed: failures.length };
+  return { inserted, skipped, repaired, removed: removal.removed, failed: failures.length };
 }

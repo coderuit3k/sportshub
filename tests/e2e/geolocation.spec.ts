@@ -11,7 +11,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * staying (full silence — no status line, no error note).
  *
  * Ranking rules (src/lib/geo/rank.ts): rating desc → distance asc →
- * price asc. The featured grid holds the top 6 of a 180-venue catalog,
+ * price asc. The featured grid holds the top 6 of a 170-venue catalog,
  * so the exact names are data-dependent; these specs assert the
  * RENDERED INVARIANTS of the ranking instead of a hardcoded order:
  *   - exactly 6 featured cards;

@@ -13,12 +13,15 @@
  *    the old copy (venue names/addresses/descriptions, review comments,
  *    session descriptions, booking notifications). Exact-match replacements,
  *    only rows that actually change are updated — a no-op once scrubbed.
- * 5. Tops the venue catalog up to the generated catalog
- *    (prisma/venue-catalog.ts — 29 extra venues per sport, 30 APPROVED
- *    per sport in total): inserts only venues whose slug is missing and
- *    repairs incomplete rows left by interrupted runs. NOT gated on
- *    user count — it runs on every build and is a no-op once the
- *    catalog is complete. If any venue fails or is still missing at the
+ * 5. Converges the venue catalog onto the generated catalog
+ *    (prisma/venue-catalog.ts — 164 venues after the owner's
+ *    2026-10-26 trim of 10 venues; public totals 30 / 27 / 27 / 30 /
+ *    30 / 26 per sport): inserts only venues whose slug is missing,
+ *    repairs incomplete rows left by interrupted runs, and deletes
+ *    the owner-removed venues with their children (a removed venue
+ *    with bookings blocks the step instead). NOT gated on user
+ *    count — it runs on every build and is a no-op once the catalog
+ *    has converged. If any venue fails or is still missing at the
  *    end, ensureVenueCatalog throws, this script exits 1 and the build
  *    fails — a partial catalog must never ship silently.
  *
@@ -171,7 +174,7 @@ async function main(): Promise<void> {
   const catalog = await ensureVenueCatalog(prisma);
   console.log(
     `[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present, ` +
-      `${catalog.repaired} repaired, ${catalog.failed} failed`,
+      `${catalog.repaired} repaired, ${catalog.removed} retired removed, ${catalog.failed} failed`,
   );
 }
 

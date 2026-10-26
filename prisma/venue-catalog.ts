@@ -1,7 +1,10 @@
 /**
- * Generated venue catalog — 29 additional APPROVED venues per sport
- * (174 total), complementing the 6 hand-written flagship venues in
- * prisma/seed.ts so every sport ends up with exactly 30 public venues.
+ * Generated venue catalog — additional APPROVED venues per sport,
+ * complementing the 6 hand-written flagship venues in prisma/seed.ts.
+ * The raw generator produces 29 per sport (174 total); after the
+ * owner's 2026-10-26 trim (REMOVED_VENUE_SLUGS below) the live
+ * catalog holds 164 venues, for public totals per sport of
+ * 30 / 27 / 27 / 30 / 30 / 26 (170 overall).
  *
  * The catalog is produced by a DETERMINISTIC generator (mulberry32 PRNG
  * with a fixed seed): every run, on every machine, yields byte-identical
@@ -280,7 +283,7 @@ export interface CatalogVenue {
   facilities: CatalogFacility[];
 }
 
-/** New venues generated per sport (30 target − 1 flagship = 29). */
+/** New venues generated per sport by the raw generator (30 target − 1 flagship = 29), before the REMOVED_VENUE_SLUGS trim. */
 export const CATALOG_PER_SPORT = 29;
 
 /* ------------------------------------------------------------------ */
@@ -398,9 +401,11 @@ function round4(v: number): number {
 }
 
 /**
- * The full generated catalog: 29 venues × 6 sports = 174 definitions.
+ * The raw generated catalog: 29 venues × 6 sports = 174 definitions.
  * Deterministic — the PRNG seed is fixed, so this returns identical
- * data on every call.
+ * data on every call. The owner trim (REMOVED_VENUE_SLUGS) is NOT
+ * applied here, so the raw output — and therefore every surviving
+ * venue's definition — stays byte-identical.
  *
  * Rating cap: at most 5 generated venues may sit at 4.9★. The flagship
  * Smash Arena is also 4.9★, and the homepage featured row takes the
@@ -426,5 +431,40 @@ export function generateCatalog(): CatalogVenue[] {
   return venues;
 }
 
-/** The catalog as a module-level constant (generated once per process). */
-export const CATALOG_VENUES: CatalogVenue[] = generateCatalog();
+/**
+ * Venues removed by explicit owner decision on 2026-10-26. These 10
+ * generated venues were the ones whose deterministic photo pick
+ * (slug hash over the sport pool in src/lib/venue-images.ts) landed
+ * on the last legacy stock photos; the owner chose to delete the
+ * venues outright, and the stock entries were purged from the pools
+ * at the same time. The raw generator still produces them
+ * (generateCatalog above), so the surviving 164 definitions stay
+ * byte-identical — they are filtered out of CATALOG_VENUES here, and
+ * prisma/catalog-store.ts deletes any already-seeded rows (with
+ * their children) on every ensure run.
+ */
+export const REMOVED_VENUE_SLUGS: readonly string[] = [
+  // pickleball
+  "san-pickleball-sao-mai",
+  "clb-pickleball-chien-thang",
+  "clb-pickleball-pho-dong",
+  // bong-da-mini
+  "san-bong-chien-thang",
+  "san-co-nhan-tao-truong-son",
+  "san-bong-doan-ket",
+  // boi-loi
+  "ho-boi-nang-dong",
+  "ho-boi-bac-sai-gon",
+  "khu-ho-boi-phuong-dong",
+  "ho-boi-phu-tho",
+];
+
+const REMOVED_VENUE_SLUG_SET: ReadonlySet<string> = new Set(REMOVED_VENUE_SLUGS);
+
+/**
+ * The live catalog as a module-level constant (generated once per
+ * process): the raw 174 definitions minus REMOVED_VENUE_SLUGS = 164.
+ */
+export const CATALOG_VENUES: CatalogVenue[] = generateCatalog().filter(
+  (v) => !REMOVED_VENUE_SLUG_SET.has(v.slug),
+);

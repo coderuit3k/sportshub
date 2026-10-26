@@ -4,6 +4,7 @@ import {
   CATALOG_VENUES,
   FLAGSHIP_VENUE_SLUGS,
   KNOWN_AMENITIES,
+  REMOVED_VENUE_SLUGS,
   SPORT_DEFS,
   SPORT_PRICE_RANGES,
   generateCatalog,
@@ -12,8 +13,10 @@ import {
 
 /**
  * Guards for the generated venue catalog (prisma/venue-catalog.ts):
- * 29 generated venues per sport + the 1 hand-written flagship in
- * prisma/seed.ts = exactly 30 APPROVED venues per sport.
+ * the raw generator makes 29 venues per sport (174 total); after the
+ * owner's 2026-10-26 trim (REMOVED_VENUE_SLUGS) the live catalog
+ * holds 164, for public totals per sport of 30 / 27 / 27 / 30 / 30 /
+ * 26 including the hand-written flagship in prisma/seed.ts.
  */
 
 /** Flagship venues from prisma/seed.ts: slug → primary sport + name. */
@@ -35,16 +38,36 @@ const FACILITY_COUNT_RANGES: Record<SportSlug, [number, number]> = {
   "boi-loi": [1, 1],
 };
 
+/** Live catalog size per sport after the owner's 2026-10-26 trim. */
+const EXPECTED_GENERATED: Record<SportSlug, number> = {
+  "cau-long": 29,
+  pickleball: 26,
+  "bong-da-mini": 26,
+  "quan-vot": 29,
+  "bong-ro": 29,
+  "boi-loi": 25,
+};
+
 describe("venue catalog", () => {
-  it("generates exactly 29 venues per sport — 30 per sport including the flagship", () => {
-    expect(CATALOG_VENUES).toHaveLength(CATALOG_PER_SPORT * SPORT_DEFS.length);
+  it("holds the trimmed catalog — 164 venues with the per-sport counts of the owner removal", () => {
+    expect(CATALOG_VENUES).toHaveLength(164);
     for (const sport of SPORT_DEFS) {
       const generated = CATALOG_VENUES.filter((v) => v.primarySportSlug === sport.slug);
-      expect(generated, sport.slug).toHaveLength(CATALOG_PER_SPORT);
+      expect(generated, sport.slug).toHaveLength(EXPECTED_GENERATED[sport.slug]);
       const flagship = Object.values(FLAGSHIPS).filter((f) => f.sport === sport.slug);
       expect(flagship, sport.slug).toHaveLength(1);
-      expect(generated.length + flagship.length, sport.slug).toBe(30);
+      expect(generated.length + flagship.length, sport.slug).toBe(EXPECTED_GENERATED[sport.slug] + 1);
     }
+  });
+
+  it("keeps the raw generator at 174 and filters exactly the owner-removed slugs out", () => {
+    const raw = generateCatalog();
+    expect(raw).toHaveLength(CATALOG_PER_SPORT * SPORT_DEFS.length);
+    expect(REMOVED_VENUE_SLUGS).toHaveLength(10);
+    const rawSlugs = new Set(raw.map((v) => v.slug));
+    for (const slug of REMOVED_VENUE_SLUGS) expect(rawSlugs.has(slug), slug).toBe(true);
+    // The trim is a pure filter: survivors are the raw definitions, untouched.
+    expect(CATALOG_VENUES).toEqual(raw.filter((v) => !REMOVED_VENUE_SLUGS.includes(v.slug)));
   });
 
   it("keeps the flagship registry in sync with the seed", () => {
@@ -119,7 +142,7 @@ describe("venue catalog", () => {
     const a = generateCatalog();
     const b = generateCatalog();
     expect(a).toEqual(b);
-    expect(CATALOG_VENUES).toEqual(a);
+    expect(CATALOG_VENUES).toEqual(a.filter((v) => !REMOVED_VENUE_SLUGS.includes(v.slug)));
   });
 
   it("contains no demo wording anywhere in the generated copy", () => {

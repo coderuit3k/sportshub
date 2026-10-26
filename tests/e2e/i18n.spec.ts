@@ -68,7 +68,7 @@ test("english /venues + venue detail render translated labels and real photos", 
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { name: /Explore & book venues/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Filters" })).toBeVisible();
-  await expect(page.getByText("(180 results)")).toBeVisible();
+  await expect(page.getByText("(170 results)")).toBeVisible();
 
   // Pixel-level guard (same bar as venue-images.spec.ts): the first
   // card's photo must actually paint, not just exist in the HTML.

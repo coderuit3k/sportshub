@@ -82,10 +82,10 @@ key, no runtime API calls, no DB column. Lookup order:
    25 m × 13.5 m with 6 lanes, the same spec as the seed venue).
 2. **Sport-level pools** (`VENUE_IMAGES`, keyed by sport slug, picked
    deterministically by hashing the venue slug). Each pool holds
-   12–13 photos of **real facilities**, so the 30 venues
-   of a sport stop repeating the same images: badminton 12 photos
-   (12 real), pickleball 12 (11 real), mini football 12 (10 real),
-   tennis 13 (13 real), basketball 12 (12 real), swimming 12 (11 real).
+   10–13 photos of **real facilities**, so the venues
+   of a sport stop repeating the same images: badminton 12 photos,
+   pickleball 11, mini football 10, tennis 13, basketball 12,
+   swimming 11 — every entry a real-facility photo.
    The real entries are photos of actual courts / halls / pools from
    Vietnamese operator and sports-guide sites where usable shots could
    be verified (Cốc Cốc Badminton via `top3.vn`; HCMC basketball courts
@@ -94,9 +94,12 @@ key, no runtime API calls, no DB column. Lookup order:
    Guangzhou Metro Pickleball Center, Oakmont Tennis Club, Teva Ocean
    Arena, the Australian Institute of Sport pool; files are CC BY /
    CC BY-SA / public domain, credited to
-   their Commons authors, served from `thumb.wikimedia.org`). Only
-   four legacy stock entries remain (one each at the tail of the
-   pickleball and swimming pools, two in mini football). A full visual
+   their Commons authors, served from `thumb.wikimedia.org`). The
+   last four legacy stock entries were purged on 2026-10-26: the
+   owner had the 10 generated venues whose slug-hash photo picks
+   landed on them deleted outright (see `REMOVED_VENUE_SLUGS` in
+   `prisma/venue-catalog.ts`), leaving public totals of
+   30 / 27 / 27 / 30 / 30 / 26 venues per sport (170 overall). A full visual
    audit in Oct 2026 re-checked every entry as it renders in the
    400×160 card / 800×256 hero crop and replaced anything that read as
    aerial / drone, a broadcast or crowd frame, a portrait or equipment

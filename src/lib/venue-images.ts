@@ -22,11 +22,14 @@
  * crop and replaced anything that read as aerial / drone, a
  * broadcast or crowd frame, a portrait or equipment close-up, a
  * school / multi-purpose hall, or an unfinished or derelict site;
- * nearly every pool is now 100% real-facility photos (pickleball
- * keeps one legacy stock entry, mini football two, swimming one).
- * Pool sizes: badminton 12, pickleball 12, mini football 12,
- * tennis 13, basketball 12, swimming 12. Unknown sports return null
- * and VenueImage renders the gradient + sport-emoji banner.
+ * every pool is now 100% real-facility photos — the last legacy
+ * stock entries were purged on 2026-10-26, together with the 10
+ * venues whose slug-hash picks landed on them (those venues were
+ * removed outright by owner decision; see REMOVED_VENUE_SLUGS in
+ * prisma/venue-catalog.ts). Pool sizes: badminton 12, pickleball 11,
+ * mini football 10, tennis 13, basketball 12, swimming 11. Unknown
+ * sports return null and VenueImage renders the gradient +
+ * sport-emoji banner.
  * No API key, no runtime API calls, no DB column.
  */
 const VENUE_PHOTOS: Record<string, string> = {
@@ -103,8 +106,7 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     // club tournament on green mats in a wooden hall (France) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/58/Tournoi_badminton_280913_12.JPG/1280px-Tournoi_badminton_280913_12.JPG",
   ],
-  // Pickleball — 12 photos: 11 real facilities, then one legacy
-  // verified stock entry.
+  // Pickleball — 11 photos, all real facilities.
   pickleball: [
     // blue/green courts at Harry B. Anderson Tennis Center, Green Bay (USA) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_1-3.jpg/1280px-Harry_B._Anderson_Tennis_Center_-_Pickleball_Courts_1-3.jpg",
@@ -128,11 +130,8 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/25/Parc_du_Pr%C3%A9-Vert%2C_terrains_de_pickleball.jpg/1280px-Parc_du_Pr%C3%A9-Vert%2C_terrains_de_pickleball.jpg",
     // purple / blue courts at Polideportivo Municipal Gallur, Madrid — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Pistas_de_pickleball_en_Madrid_Espa%C3%B1a%2C_Polideportivo_Municipal_Gallur.jpg/1280px-Pistas_de_pickleball_en_Madrid_Espa%C3%B1a%2C_Polideportivo_Municipal_Gallur.jpg",
-    // legacy stock: net-level view across blue / green courts — Pexels
-    "https://images.pexels.com/photos/29820786/pexels-photo-29820786.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
-  // Bóng đá mini — 12 photos: 10 real facilities, then the two
-  // original verified stock entries.
+  // Bóng đá mini — 10 photos, all real facilities.
   "bong-da-mini": [
     // outdoor turf futsal courts at Yoyogi, Tokyo — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Tokyo_Yoyogi_futsal_court.JPG/1280px-Tokyo_Yoyogi_futsal_court.JPG",
@@ -154,8 +153,6 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/53/Bong_da_mini.jpg/1280px-Bong_da_mini.jpg",
     // caged community pitch at Calthorpe Community Garden, London — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/Futsal_pitch%2C_Calthorpe_Community_Garden_-_geograph.org.uk_-_4534718.jpg/1280px-Futsal_pitch%2C_Calthorpe_Community_Garden_-_geograph.org.uk_-_4534718.jpg",
-    "https://images.pexels.com/photos/36681531/pexels-photo-36681531.jpeg?auto=compress&cs=tinysrgb&w=1200",
-    "https://images.pexels.com/photos/28271652/pexels-photo-28271652.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
   // Quần vợt — 13 photos, all real facilities (Wikimedia Commons).
   "quan-vot": [
@@ -213,8 +210,7 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     // game on the red / grey Zone Six court, Đống Đa, Hanoi — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Basketball_game%2C_%C4%90%E1%BB%91ng_%C4%90a%2C_Hanoi%2C_May_2023.jpg/1280px-Basketball_game%2C_%C4%90%E1%BB%91ng_%C4%90a%2C_Hanoi%2C_May_2023.jpg",
   ],
-  // Bơi lội — 12 photos: 11 real facilities, then one legacy
-  // verified stock entry.
+  // Bơi lội — 11 photos, all real facilities.
   "boi-loi": [
     // outdoor lane pool at Bellbowrie, Brisbane — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Bellbowrie_swimming_pool%2C_main_pool_with_lanes%2C_2025.jpg/1280px-Bellbowrie_swimming_pool%2C_main_pool_with_lanes%2C_2025.jpg",
@@ -238,8 +234,6 @@ export const VENUE_IMAGES: Record<string, string[]> = {
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Public_Swimming_Pool_in_Melbourne_VIC_Australia.jpg/1280px-Public_Swimming_Pool_in_Melbourne_VIC_Australia.jpg",
     // green-lit indoor lane pool at Ulju Youth Center (Korea) — Wikimedia Commons
     "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Ulju_youth_center_swimming_pool_20170312_153937.jpg/1280px-Ulju_youth_center_swimming_pool_20170312_153937.jpg",
-    // legacy stock: indoor lane pool with chairs behind glass — Pexels
-    "https://images.pexels.com/photos/40068492/pexels-photo-40068492.jpeg?auto=compress&cs=tinysrgb&w=1200",
   ],
 };
 

@@ -4,15 +4,17 @@ import { VENUE_IMAGES, venueImage } from "../src/lib/venue-images";
 /**
  * Guards for the sport-level venue photo pools (src/lib/venue-images.ts).
  *
- * The pools hold 12–13 photos per sport, almost entirely real-facility
+ * The pools hold 10–13 photos per sport, ALL of them real-facility
  * photography (Vietnamese operator / guide sites and Wikimedia Commons
- * photos of named facilities), so the 30 venues of a sport stop
+ * photos of named facilities), so the venues of a sport stop
  * repeating the same handful of images. Every URL was
  * download-verified (HTTP 200 + image content type with the site as
  * Referer) and visually checked as it renders in the card / hero crop
  * before being added — an Oct 2026 audit replaced every entry that
  * read as aerial, broadcast, portrait, close-up, school-hall,
- * unfinished or derelict.
+ * unfinished or derelict, and on 2026-10-26 the last legacy stock
+ * entries were purged (with the 10 venues whose slug-hash picks
+ * landed on them — see REMOVED_VENUE_SLUGS in prisma/venue-catalog.ts).
  */
 const SPORTS = [
   "cau-long",
@@ -39,9 +41,12 @@ describe("VENUE_IMAGES pools", () => {
     expect(Object.keys(VENUE_IMAGES).sort()).toEqual([...SPORTS].sort());
   });
 
-  it("has at least 12 photos per sport", () => {
+  it("has at least 10 photos per sport", () => {
+    // Floor was 12 until 2026-10-26, when the owner purged the last
+    // legacy stock entries (pickleball −1, mini football −2,
+    // swimming −1) rather than keep any stock photo at all.
     for (const sport of SPORTS) {
-      expect(VENUE_IMAGES[sport].length, sport).toBeGreaterThanOrEqual(12);
+      expect(VENUE_IMAGES[sport].length, sport).toBeGreaterThanOrEqual(10);
     }
   });
 
@@ -67,20 +72,15 @@ describe("VENUE_IMAGES pools", () => {
     }
   });
 
-  it("is mostly real-facility photography (not stock hosts)", () => {
+  it("contains ZERO stock-host photos — every pool entry is a real-facility photo", () => {
+    // Since the 2026-10-26 purge no pool may link an Unsplash/Pexels
+    // (stock) URL at all; every photo must come from a real facility's
+    // own site or a Commons photo of a named facility.
     const stockHosts = new Set(["images.unsplash.com", "images.pexels.com"]);
     for (const sport of SPORTS) {
-      const realCount = VENUE_IMAGES[sport].filter(
-        (url) => !stockHosts.has(new URL(url).hostname),
-      ).length;
-      // Every pool carries at least 7 real-facility photos, and after
-      // the Oct 2026 audit they are the majority in every pool —
-      // badminton / tennis / basketball are 100% real; pickleball,
-      // mini football and swimming keep 1–2 legacy stock entries.
-      expect(realCount, sport).toBeGreaterThanOrEqual(7);
-      expect(realCount, sport).toBeGreaterThan(
-        VENUE_IMAGES[sport].length / 2,
-      );
+      for (const url of VENUE_IMAGES[sport]) {
+        expect(stockHosts.has(new URL(url).hostname), `${sport}: ${url}`).toBe(false);
+      }
     }
   });
 });
