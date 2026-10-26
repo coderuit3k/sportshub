@@ -76,6 +76,10 @@ export function getR2Client(config: R2Config | null = getR2Config()): S3Client {
         region: "auto",
         endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
         credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+        // R2 rejects the SDK's default CRC32 checksum params on presigned
+        // PUT URLs (browser uploads fail) — only checksum when required.
+        requestChecksumCalculation: "WHEN_REQUIRED",
+        responseChecksumValidation: "WHEN_REQUIRED",
       }),
     };
   }
