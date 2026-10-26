@@ -4,11 +4,16 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canJoinSession } from "@/lib/booking/logic";
 import { notify } from "@/lib/notifications";
+import { sessionJoinLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({ action: z.enum(["join", "leave"]) });
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
+  // Join/leave flapping brake: 30 attempts per 10 minutes per user, both
+  // actions counted (specific bucket — not also in the generic write bucket).
+  const gate = await sessionJoinLimiter.consume(`session-join:${user.id}`);
+  if (!gate.allowed) return tooManyRequests(gate);
   const { id } = await params;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Hành động không hợp lệ" }, { status: 400 });

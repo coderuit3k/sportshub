@@ -3,11 +3,16 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { transitionBooking } from "@/services/bookings";
+import { genericWriteLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({ action: z.enum(["cancel", "approve", "reject", "complete"]) });
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
+  // Generic authenticated-write bucket (booking creation has its own
+  // stricter bucket; actions like cancel/approve land here).
+  const gate = await genericWriteLimiter.consume(`write:${user.id}`);
+  if (!gate.allowed) return tooManyRequests(gate);
   const { id } = await params;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Hành động không hợp lệ" }, { status: 400 });

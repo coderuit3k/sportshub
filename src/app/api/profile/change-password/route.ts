@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { validateChangePasswordInput } from "@/lib/account/change-password";
+import { passwordChangeLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 /**
  * Self-service password change. Session required; a user can only ever change
@@ -19,6 +20,12 @@ import { validateChangePasswordInput } from "@/lib/account/change-password";
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
+  // Password-guessing brake: EVERY attempt counts, 5 per hour per user —
+  // the current password is verified below, so throttling must happen
+  // before the compare, not after a failure (specific bucket — not also
+  // counted into the generic write bucket).
+  const gate = await passwordChangeLimiter.consume(`password-change:${user.id}`);
+  if (!gate.allowed) return tooManyRequests(gate);
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const validation = validateChangePasswordInput(body ?? {});
   if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 400 });

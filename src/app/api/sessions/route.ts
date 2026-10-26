@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { sessionCreateLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({
   title: z.string().min(5), sportId: z.string().min(1), venueId: z.string().optional(),
@@ -13,6 +14,10 @@ const schema = z.object({
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Cần đăng nhập" }, { status: 401 });
+  // Session spam brake: 10 creations per hour per user (specific bucket —
+  // this route is NOT also counted into the generic write bucket).
+  const gate = await sessionCreateLimiter.consume(`session-create:${user.id}`);
+  if (!gate.allowed) return tooManyRequests(gate);
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
   const d = parsed.data;

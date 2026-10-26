@@ -411,7 +411,35 @@ export function createRateLimiter(config: RateLimiterConfig, env?: NodeJS.Proces
  *   locked out by their own successful logins.
  * - register: every attempt counts — 5 per hour per IP.
  * - booking: every creation attempt counts — 30 per 10 minutes per user.
+ * - apiGlobal: EVERY `/api/*` request counts — 600 per 10 minutes per IP,
+ *   enforced in middleware as a safety net under all the specific buckets
+ *   (`/api/health` is exempt: uptime probes must never be throttled).
+ * - sessionCreate: 10 per hour per user (POST /api/sessions).
+ * - sessionJoin: join AND leave attempts count — 30 per 10 minutes per user.
+ * - reviewCreate: 10 per hour per user. RESERVED: there is no
+ *   review-creation endpoint today (reviews are seed data — see
+ *   docs/architecture.md); the bucket is defined so the route, when it
+ *   lands, wires into an existing, tested limiter.
+ * - passwordChange: every attempt counts — 5 per hour per user
+ *   (anti password-guessing on the self-service endpoint).
+ * - genericWrite: 60 per 10 minutes per user — covers every authenticated
+ *   mutation NOT claimed by a specific bucket above (favorites toggle,
+ *   profile update, booking actions, admin user/venue mutations).
+ *
+ * Classification rule: each mutation route is claimed by exactly ONE
+ * per-user bucket (its specific bucket when one exists, genericWrite
+ * otherwise) and is never double-counted into genericWrite on top of a
+ * specific bucket — the specific quotas are the binding constraint, and
+ * stacking would silently shrink them. The per-IP apiGlobal net is the
+ * only limiter that stacks, by design. tests/rate-limit-coverage.test.ts
+ * pins this classification for every route under src/app/api.
  */
 export const loginLimiter = createRateLimiter({ limit: 10, windowMs: 10 * 60_000, prefix: "sportshub:login" });
 export const registerLimiter = createRateLimiter({ limit: 5, windowMs: 60 * 60_000, prefix: "sportshub:register" });
 export const bookingLimiter = createRateLimiter({ limit: 30, windowMs: 10 * 60_000, prefix: "sportshub:booking" });
+export const apiGlobalLimiter = createRateLimiter({ limit: 600, windowMs: 10 * 60_000, prefix: "sportshub:api-global" });
+export const sessionCreateLimiter = createRateLimiter({ limit: 10, windowMs: 60 * 60_000, prefix: "sportshub:session-create" });
+export const sessionJoinLimiter = createRateLimiter({ limit: 30, windowMs: 10 * 60_000, prefix: "sportshub:session-join" });
+export const reviewCreateLimiter = createRateLimiter({ limit: 10, windowMs: 60 * 60_000, prefix: "sportshub:review-create" });
+export const passwordChangeLimiter = createRateLimiter({ limit: 5, windowMs: 60 * 60_000, prefix: "sportshub:password-change" });
+export const genericWriteLimiter = createRateLimiter({ limit: 60, windowMs: 10 * 60_000, prefix: "sportshub:write" });

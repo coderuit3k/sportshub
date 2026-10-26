@@ -311,9 +311,60 @@ returned 429 — proof the counters are global in Redis rather than
 per-instance memory. (Temporary diagnostic response headers used to
 obtain this proof were removed after verification.)
 
-Quotas (unchanged): login 10 **failed** attempts / 10 min per IP+email
-(reset on success), register 5 / hour per IP, booking 30 / 10 min
-per user.
+Quotas for the original three buckets (unchanged): login 10 **failed**
+attempts / 10 min per IP+email (reset on success), register 5 / hour
+per IP, booking 30 / 10 min per user.
+
+**Extension (2026-10-26): the whole API is covered.** Every route under
+`src/app/api` now sits behind two layers:
+
+1. **Global safety net (middleware).** `src/middleware.ts` matches
+   `/api/:path*` and consumes `apiGlobalLimiter` — 600 requests / 10 min
+   per IP — before any handler runs; `/api/health` is exempt (uptime
+   probes must never be throttled). Middleware was chosen over wiring a
+   guard into each handler because it is the only layer that covers
+   `/api/*` *totally, by construction* — a future route is covered the
+   moment it exists. It calls the same limiter facade as the handlers,
+   so the failure semantics are identical: a Redis error logs loudly
+   and degrades that call to per-instance memory rather than failing
+   the request. The API branch returns before the page auth guard, so
+   API requests are never redirected to `/login` (handlers answer their
+   own 401 JSON). Headroom check: a normal page load fans out to ~1 API
+   call (`GET /api/me/favorites`, one shared fetch per page) plus
+   booking-widget availability fetches on interaction — even a shared
+   NAT IP with several active users stays far below 600 / 10 min.
+2. **Per-user write buckets (handlers).** Each mutation route is
+   claimed by exactly ONE per-user bucket. Routes with a specific
+   bucket are NOT also counted into the generic bucket — the specific
+   quota is the binding constraint, and stacking would silently shrink
+   it (booking keeps its full 30 / 10 min). Only the per-IP global net
+   stacks, by design.
+
+| Bucket | Quota | Key | Routes |
+| --- | --- | --- | --- |
+| Global API net | 600 / 10 min | IP | ALL `/api/*` except `/api/health` (middleware) |
+| Login | 10 **failed** / 10 min | IP + email | `POST /api/auth/login` |
+| Register | 5 / hour | IP | `POST /api/auth/register` |
+| Booking create | 30 / 10 min | user | `POST /api/bookings` |
+| Session create | 10 / hour | user | `POST /api/sessions` |
+| Session join/leave | 30 / 10 min | user | `POST /api/sessions/[id]/join` |
+| Review create | 10 / hour | user | *reserved — no endpoint exists yet* |
+| Password change | 5 / hour | user | `POST /api/profile/change-password` |
+| Generic write | 60 / 10 min | user | `POST /api/bookings/[id]/action`, `POST /api/favorites`, `PATCH /api/profile`, `POST /api/admin/users/[id]`, `POST /api/admin/venues/[id]` |
+
+Route-coverage summary (all 15 routes): the three read-only GETs
+(`/api/availability`, `/api/me/favorites`) rely on the global net;
+`/api/health` is fully exempt; `POST /api/auth/logout` is the one
+mutation with no per-user bucket — it must work with an expired or
+absent session, so there is no trustworthy user id to key on, and the
+global net covers it. Admin mutations are deliberately NOT exempt —
+they drain the acting admin's generic write bucket. There is still no
+review-creation endpoint (reviews are seed data), so `reviewCreateLimiter`
+is defined and unit-tested but intentionally unattached; wiring it is a
+one-line addition when the route lands. `tests/rate-limit-coverage.test.ts`
+pins this table: it discovers every route under `src/app/api`, fails if
+one is missing from the manifest, and verifies each claimed bucket is
+actually imported and consumed by its handler.
 
 **Activating Upstash (production):**
 

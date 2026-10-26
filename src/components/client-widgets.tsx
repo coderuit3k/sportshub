@@ -43,6 +43,10 @@ export function FavoriteButton({ venueId, initial = false, loginLabel }: { venue
         setBusy(true);
         const r = await fetch("/api/favorites", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ venueId }) });
         if (r.status === 401) { window.location.href = "/login"; return; }
+        // Any other failure (e.g. 429 rate limit) has no `favorite` field —
+        // keep the previous state instead of flipping the heart to a
+        // made-up value; the next hydration will correct it.
+        if (!r.ok) { setBusy(false); return; }
         const j = (await r.json()) as { favorite: boolean };
         setFav(j.favorite); setBusy(false);
       }}>

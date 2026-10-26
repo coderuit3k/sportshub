@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canLockAccount, validateNewPassword } from "@/lib/admin/user-admin";
+import { genericWriteLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("set-password"), password: z.string() }),
@@ -20,6 +21,10 @@ const schema = z.discriminatedUnion("action", [
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getCurrentUser();
   if (!actor || actor.role !== "ADMIN") return NextResponse.json({ error: "Chỉ Admin" }, { status: 403 });
+  // Admin mutations are NOT exempt from rate limiting: they land in the
+  // generic authenticated-write bucket, keyed by the acting admin.
+  const gate = await genericWriteLimiter.consume(`write:${actor.id}`);
+  if (!gate.allowed) return tooManyRequests(gate);
   const { id } = await params;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Hành động không hợp lệ" }, { status: 400 });
