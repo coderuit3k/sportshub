@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
+import { storedPrimaryImageUrl } from "@/lib/venue-images";
 
 /**
  * Cached PUBLIC reads (see docs/architecture.md → "Caching & rate limiting").
@@ -44,6 +45,8 @@ export interface PublicVenueCard {
   minPrice: number | null;
   sports: { slug: string; name: string }[];
   primarySportSlug: string | null;
+  /** Stored primary photo (Cloudflare R2), when the venue has one; null → the code map decides. */
+  imageUrl: string | null;
   latitude: number | null;
   longitude: number | null;
 }
@@ -86,7 +89,11 @@ export const getCachedFeaturedVenues = unstable_cache(
   async (): Promise<PublicVenueCard[]> => {
     const venues = await prisma.venue.findMany({
       where: { status: "APPROVED" },
-      include: { sports: { include: { sport: true } }, facilities: { include: { priceRules: true } } },
+      include: {
+        sports: { include: { sport: true } },
+        facilities: { include: { priceRules: true } },
+        images: { orderBy: { sortOrder: "asc" }, select: { url: true } },
+      },
       orderBy: { ratingAvg: "desc" },
       take: 6,
     });
@@ -103,6 +110,7 @@ export const getCachedFeaturedVenues = unstable_cache(
       minPrice: minPriceOf(v.facilities),
       sports: v.sports.map((s) => ({ slug: s.sport.slug, name: s.sport.name })),
       primarySportSlug: v.sports[0]?.sport.slug ?? null,
+      imageUrl: storedPrimaryImageUrl(v.images),
       latitude: v.latitude,
       longitude: v.longitude,
     }));
@@ -170,6 +178,8 @@ export interface VenueListItem {
   minPrice: number | null;
   sports: { slug: string; name: string }[];
   primarySportSlug: string | null;
+  /** Stored primary photo (Cloudflare R2), when the venue has one; null → the code map decides. */
+  imageUrl: string | null;
 }
 
 export const getCachedVenueList = unstable_cache(
@@ -185,7 +195,11 @@ export const getCachedVenueList = unstable_cache(
         ...(filters.sport ? { sports: { some: { sport: { slug: filters.sport } } } } : {}),
         ...(filters.q ? { OR: [{ name: { contains: filters.q } }, { district: { contains: filters.q } }, { address: { contains: filters.q } }] } : {}),
       },
-      include: { sports: { include: { sport: true } }, facilities: { include: { priceRules: true } } },
+      include: {
+        sports: { include: { sport: true } },
+        facilities: { include: { priceRules: true } },
+        images: { orderBy: { sortOrder: "asc" }, select: { url: true } },
+      },
     });
     const withPrice = venues.map((v) => ({ v, minPrice: minPriceOf(v.facilities), createdAtMs: v.createdAt.getTime() }));
     const filtered = withPrice.filter((x) => filters.maxPrice == null || (x.minPrice !== null && x.minPrice <= filters.maxPrice));
@@ -214,6 +228,7 @@ export const getCachedVenueList = unstable_cache(
       minPrice,
       sports: v.sports.map((s) => ({ slug: s.sport.slug, name: s.sport.name })),
       primarySportSlug: v.sports[0]?.sport.slug ?? null,
+      imageUrl: storedPrimaryImageUrl(v.images),
     }));
   },
   ["public:venue-list:v2"],
@@ -255,6 +270,8 @@ export interface VenueDetailData {
   cancelFullBeforeHours: number;
   cancelPartialBeforeHours: number;
   cancelPartialFeePercent: number;
+  /** Stored primary photo (Cloudflare R2), when the venue has one; null → the code map decides. */
+  imageUrl: string | null;
   sports: { id: string; slug: string; name: string }[];
   amenities: { id: string; name: string }[];
   facilities: {
@@ -277,6 +294,7 @@ export const getCachedVenueDetail = unstable_cache(
       include: {
         sports: { include: { sport: true } },
         amenities: true,
+        images: { orderBy: { sortOrder: "asc" }, select: { url: true } },
         facilities: { include: { priceRules: true, sport: true } },
         hours: { orderBy: { dayOfWeek: "asc" } },
         reviews: { include: { user: true }, orderBy: { createdAt: "desc" }, take: 10 },
@@ -302,6 +320,7 @@ export const getCachedVenueDetail = unstable_cache(
       cancelFullBeforeHours: venue.cancelFullBeforeHours,
       cancelPartialBeforeHours: venue.cancelPartialBeforeHours,
       cancelPartialFeePercent: venue.cancelPartialFeePercent,
+      imageUrl: storedPrimaryImageUrl(venue.images),
       sports: venue.sports.map((s) => ({ id: s.id, slug: s.sport.slug, name: s.sport.name })),
       amenities: venue.amenities.map((a) => ({ id: a.id, name: a.name })),
       facilities: venue.facilities.map((f) => ({

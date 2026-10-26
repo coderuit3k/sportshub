@@ -76,7 +76,7 @@ export default async function VenuesPage({ searchParams }: { searchParams: Promi
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {pageItems.map((v) => (
-                <VenueCard key={v.id} v={{ id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address, ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly, minPrice: v.minPrice, sports: v.sports, primarySportSlug: v.primarySportSlug, isFavorite: favIds.includes(v.id) }} />
+                <VenueCard key={v.id} v={{ id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address, ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly, minPrice: v.minPrice, sports: v.sports, primarySportSlug: v.primarySportSlug, imageUrl: v.imageUrl, isFavorite: favIds.includes(v.id) }} />
               ))}
             </div>
             {totalPages > 1 && (

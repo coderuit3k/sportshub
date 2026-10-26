@@ -12,6 +12,8 @@ export interface VenueCardData {
   id: string; slug: string; name: string; district: string; address: string;
   ratingAvg: number; ratingCount: number; beginnerFriendly: boolean; familyFriendly: boolean;
   minPrice: number | null; sports: VenueCardSport[]; primarySportSlug?: string | null;
+  /** Stored primary photo (Cloudflare R2); null/omitted → the code map decides. */
+  imageUrl?: string | null;
   isFavorite?: boolean;
   /** Straight-line distance from the visitor's position, when known (geolocation ranking). */
   distanceKm?: number | null;
@@ -29,7 +31,7 @@ export default function VenueCard({ v }: { v: VenueCardData }) {
           sports without a verified photo fall back to the gradient + emoji.
           Overlays (sport chip, favorite heart) stay above the image. */}
       <div className="relative h-40 overflow-hidden">
-        <VenueImage primarySportSlug={v.primarySportSlug} venueSlug={v.slug} venueName={v.name} className="absolute inset-0" />
+        <VenueImage primarySportSlug={v.primarySportSlug} venueSlug={v.slug} venueName={v.name} storedImageUrl={v.imageUrl ?? null} className="absolute inset-0" />
         <span className="absolute right-3 top-3 z-10 chip bg-white/90">{primarySport}</span>
         <FavoriteHeart venueId={v.id} initial={v.isFavorite ?? false} />
       </div>

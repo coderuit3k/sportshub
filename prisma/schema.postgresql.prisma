@@ -119,7 +119,7 @@ model VenueImage {
   id        String @id @default(cuid())
   venueId   String
   venue     Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  url       String // gradient token e.g. "gradient:green" — no external stock URLs in MVP
+  url       String // "gradient:<color>" placeholder token, or the venue's stored photo URL (Cloudflare R2; see docs/architecture.md → "Image storage")
   caption   String?
   sortOrder Int    @default(0)
 }

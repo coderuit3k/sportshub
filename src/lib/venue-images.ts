@@ -30,7 +30,17 @@
  * mini football 10, tennis 13, basketball 12, swimming 11. Unknown
  * sports return null and VenueImage renders the gradient +
  * sport-emoji banner.
- * No API key, no runtime API calls, no DB column.
+ * No API key, no runtime API calls.
+ *
+ * DISPLAY PRIORITY (see docs/architecture.md → "Image storage"): the
+ * map in this file is only the DEFAULT assignment. What a venue
+ * actually shows is resolved by resolveVenueDisplayImage():
+ *   1. the venue's stored primary photo (VenueImage row in the DB —
+ *      an R2 copy of the map photo written by the deploy-time
+ *      migration in prisma/photo-migration.ts, or a photo the venue
+ *      owner uploaded), then
+ *   2. this file's map (per-venue override → sport pool), then
+ *   3. null → VenueImage renders the gradient + emoji banner.
  */
 const VENUE_PHOTOS: Record<string, string> = {
   // Smash Arena Thủ Đức (badminton, indoor) — Quốc Việt Badminton
@@ -262,4 +272,36 @@ export function venueImage(
   const urls = VENUE_IMAGES[primarySportSlug];
   if (!urls || urls.length === 0) return null;
   return urls[stableHash(venueSlug) % urls.length];
+}
+
+/**
+ * The venue's stored primary photo URL, or null. `images` must be the
+ * venue's VenueImage rows ordered by sortOrder ascending (the primary
+ * row first) — the first row whose url is an http(s) URL wins. Rows
+ * holding a `gradient:*` placeholder token are NOT photos and are
+ * skipped, as is any non-URL value.
+ */
+export function storedPrimaryImageUrl(
+  images: readonly { url: string }[],
+): string | null {
+  for (const image of images) {
+    if (/^https?:\/\//i.test(image.url)) return image.url;
+  }
+  return null;
+}
+
+/**
+ * Resolve the photo a venue actually displays, in priority order:
+ * the stored primary photo (R2 copy of the map photo, or an
+ * owner-uploaded photo) beats the code map in this file; when neither
+ * yields a photo, returns null and the caller renders the gradient +
+ * sport-emoji fallback.
+ */
+export function resolveVenueDisplayImage(input: {
+  storedImageUrl?: string | null;
+  primarySportSlug?: string | null;
+  venueSlug: string;
+}): string | null {
+  if (input.storedImageUrl) return input.storedImageUrl;
+  return venueImage(input.primarySportSlug, input.venueSlug);
 }

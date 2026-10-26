@@ -18,9 +18,14 @@ import { describe, expect, it } from "vitest";
  * middleware; each mutation is additionally claimed by exactly ONE
  * per-user bucket (its specific bucket when one exists, otherwise the
  * generic write bucket) and is never double-counted into the generic
- * bucket. The only mutation with no per-user bucket is POST
+ * bucket. The only mutations with no per-user bucket are POST
  * /api/auth/logout (it must work with an expired/absent session, so
- * there is no trustworthy user id to key on — the global net covers it).
+ * there is no trustworthy user id to key on — the global net covers
+ * it) and POST /api/owner/venue-photo/upload (it only ISSUES a
+ * presigned R2 upload URL — the file bytes go browser → Cloudflare
+ * R2 directly and the database write happens on
+ * POST /api/owner/venue-photo, which IS claimed by the generic
+ * write bucket).
  */
 
 const API_DIR = path.resolve(process.cwd(), "src/app/api");
@@ -49,10 +54,16 @@ const MANIFEST: Record<string, Classification> = {
   "/api/profile/change-password": { methods: ["POST"], handlerLimiter: "passwordChangeLimiter" },
   "/api/admin/users/[id]": { methods: ["POST"], handlerLimiter: "genericWriteLimiter" },
   "/api/admin/venues/[id]": { methods: ["POST"], handlerLimiter: "genericWriteLimiter" },
+  // Venue photos (Cloudflare R2): the upload route only issues a
+  // presigned PUT URL — no write of its own → global net only (see
+  // header). The persist/remove route performs the actual DB write
+  // → generic bucket.
+  "/api/owner/venue-photo/upload": { methods: ["POST"], handlerLimiter: null },
+  "/api/owner/venue-photo": { methods: ["POST", "DELETE"], handlerLimiter: "genericWriteLimiter" },
 };
 
 /** Routes allowed to mutate with no per-user bucket (global net only). */
-const GLOBAL_ONLY_MUTATIONS = ["/api/auth/logout"];
+const GLOBAL_ONLY_MUTATIONS = ["/api/auth/logout", "/api/owner/venue-photo/upload"];
 
 function discoverRoutes(dir: string, prefix: string): Map<string, string> {
   const found = new Map<string, string>();

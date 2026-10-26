@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { VENUE_IMAGES, venueImage } from "../src/lib/venue-images";
+import {
+  VENUE_IMAGES,
+  resolveVenueDisplayImage,
+  storedPrimaryImageUrl,
+  venueImage,
+} from "../src/lib/venue-images";
 
 /**
  * Guards for the sport-level venue photo pools (src/lib/venue-images.ts).
@@ -112,5 +117,81 @@ describe("venueImage", () => {
     expect(venueImage("pickleball", "pickle-hub-binh-thanh")).toContain(
       "Guangzhou_Metro_Pickleball_Center",
     );
+  });
+});
+
+describe("storedPrimaryImageUrl", () => {
+  it("returns the first http(s) URL in sortOrder order", () => {
+    expect(
+      storedPrimaryImageUrl([
+        { url: "https://pub-abc123.r2.dev/venue-photos/a.jpg" },
+        { url: "https://thumb.wikimedia.org/other.jpg" },
+      ]),
+    ).toBe("https://pub-abc123.r2.dev/venue-photos/a.jpg");
+  });
+
+  it("ignores gradient:* placeholder rows — they are not photos", () => {
+    expect(storedPrimaryImageUrl([{ url: "gradient:green" }])).toBeNull();
+    expect(
+      storedPrimaryImageUrl([
+        { url: "gradient:green" },
+        { url: "https://pub-abc123.r2.dev/venue-photos/b.jpg" },
+      ]),
+    ).toBe("https://pub-abc123.r2.dev/venue-photos/b.jpg");
+  });
+
+  it("returns null for no rows or no URL rows", () => {
+    expect(storedPrimaryImageUrl([])).toBeNull();
+    expect(storedPrimaryImageUrl([{ url: "" }, { url: "not-a-url" }])).toBeNull();
+  });
+});
+
+describe("resolveVenueDisplayImage (display priority)", () => {
+  const storedUrl = "https://pub-abc123.r2.dev/venue-photos/smash-arena-thu-duc.jpg";
+
+  it("the stored primary photo beats the per-venue code-map override", () => {
+    expect(
+      resolveVenueDisplayImage({
+        storedImageUrl: storedUrl,
+        primarySportSlug: "cau-long",
+        venueSlug: "smash-arena-thu-duc",
+      }),
+    ).toBe(storedUrl);
+  });
+
+  it("the stored primary photo beats the sport-pool pick", () => {
+    expect(
+      resolveVenueDisplayImage({
+        storedImageUrl: storedUrl,
+        primarySportSlug: "boi-loi",
+        venueSlug: "some-pool-venue",
+      }),
+    ).toBe(storedUrl);
+  });
+
+  it("falls back to the code map when there is no stored photo", () => {
+    expect(
+      resolveVenueDisplayImage({
+        storedImageUrl: null,
+        primarySportSlug: "cau-long",
+        venueSlug: "smash-arena-thu-duc",
+      }),
+    ).toBe(venueImage("cau-long", "smash-arena-thu-duc"));
+    expect(
+      resolveVenueDisplayImage({
+        primarySportSlug: "boi-loi",
+        venueSlug: "some-pool-venue",
+      }),
+    ).toBe(venueImage("boi-loi", "some-pool-venue"));
+  });
+
+  it("returns null when neither stored photo nor map photo exists", () => {
+    expect(
+      resolveVenueDisplayImage({
+        storedImageUrl: null,
+        primarySportSlug: "bong-ban",
+        venueSlug: "nowhere",
+      }),
+    ).toBeNull();
   });
 });

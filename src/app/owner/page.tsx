@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { BookingActionButtons } from "@/components/client-widgets";
+import VenuePhotoManager from "@/components/VenuePhotoManager";
+import { storedPrimaryImageUrl } from "@/lib/venue-images";
+import { isStorageConfigured } from "@/lib/storage/r2";
 import { formatVND } from "@/lib/booking/logic";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Kênh chủ sân" };
@@ -10,7 +13,16 @@ export default async function OwnerPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "OWNER" && user.role !== "ADMIN") redirect("/");
-  const venues = await prisma.venue.findMany({ where: { ownerId: user.id }, include: { facilities: true, bookings: true } });
+  const venues = await prisma.venue.findMany({
+    where: { ownerId: user.id },
+    include: {
+      facilities: true,
+      bookings: true,
+      sports: { include: { sport: true } },
+      images: { orderBy: { sortOrder: "asc" }, select: { url: true } },
+    },
+  });
+  const uploadsConfigured = isStorageConfigured();
   const venueIds = venues.map((v) => v.id);
   const bookings = await prisma.booking.findMany({
     where: { venueId: { in: venueIds } },
@@ -36,6 +48,14 @@ export default async function OwnerPage() {
           <div key={v.id} className="border-b py-3 last:border-0">
             <p className="font-bold">{v.name}</p>
             <p className="text-sm text-slate-500">{v.district} — Trạng thái: {v.status} — {v.facilities.length} sân con — {v.bookings.length} đặt sân — Giá/hủy: hoàn 100% trước {v.cancelFullBeforeHours}h, phí {v.cancelPartialFeePercent}% trước {v.cancelPartialBeforeHours}h</p>
+            <VenuePhotoManager
+              venueId={v.id}
+              venueSlug={v.slug}
+              venueName={v.name}
+              primarySportSlug={v.sports[0]?.sport.slug ?? null}
+              storedImageUrl={storedPrimaryImageUrl(v.images)}
+              uploadsConfigured={uploadsConfigured}
+            />
           </div>
         ))}
       </section>

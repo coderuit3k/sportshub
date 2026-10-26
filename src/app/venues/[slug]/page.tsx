@@ -77,6 +77,7 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
             primarySportSlug={venue.sports[0]?.slug ?? null}
             venueSlug={venue.slug}
             venueName={venue.name}
+            storedImageUrl={venue.imageUrl}
             className="absolute inset-0"
             gradientClassName="from-primary via-secondary to-accent"
             emojiClassName="text-6xl"

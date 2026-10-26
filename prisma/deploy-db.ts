@@ -24,6 +24,15 @@
  *    has converged. If any venue fails or is still missing at the
  *    end, ensureVenueCatalog throws, this script exits 1 and the build
  *    fails — a partial catalog must never ship silently.
+ * 6. Migrates the curated venue photos into Cloudflare R2
+ *    (prisma/photo-migration.ts): downloads each venue's code-map
+ *    photo once and stores its public R2 URL on the primary
+ *    VenueImage row, so stored photos become the primary display
+ *    source. Runs after the catalog ensure (it iterates the
+ *    converged catalog), is idempotent, and NEVER fails the build —
+ *    while R2 is not configured it logs a skip and succeeds, and a
+ *    failed photo copy just leaves the external URL displaying
+ *    (retried on the next build).
  *
  * Uses DATABASE_URL from the environment; the build command points it at
  * DATABASE_URL_UNPOOLED for DDL reliability (Neon pooled endpoints are not
@@ -32,6 +41,7 @@
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
 import { ensureVenueCatalog } from "./catalog-store";
+import { migrateVenuePhotosToStorage } from "./photo-migration";
 
 const prisma = new PrismaClient();
 
@@ -175,6 +185,11 @@ async function main(): Promise<void> {
   console.log(
     `[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present, ` +
       `${catalog.repaired} repaired, ${catalog.removed} retired removed, ${catalog.failed} failed`,
+  );
+  const photos = await migrateVenuePhotosToStorage(prisma);
+  console.log(
+    `[deploy-db] venue photos: ${photos.migrated} migrated to R2, ${photos.skipped} skipped, ` +
+      `${photos.failed.length} failed (display fallback unaffected)`,
   );
 }
 
