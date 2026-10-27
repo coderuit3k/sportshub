@@ -158,10 +158,8 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
         ))}
       </div>
       {slot && (
-        <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm">
-          <p>{t("summary", { duration, startTime: slot.startTime })}</p>
+        <div className="mb-3 rounded-lg bg-slate-50 p-3">
           <p className="text-base font-bold text-primary">{t("total", { total: formatVND(total, locale) })}</p>
-          <p className="text-xs text-slate-500">{t("paymentNote")}</p>
         </div>
       )}
       <button className="btn-primary w-full" disabled={!slot || busy} onClick={confirm}>{busy ? t("processing") : t("confirm")}</button>

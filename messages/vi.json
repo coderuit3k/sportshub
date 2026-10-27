@@ -88,7 +88,6 @@
     "favoriteSaved": "Đã lưu yêu thích",
     "hours": "{count} giờ",
     "loadingSlots": "Đang tải khung giờ...",
-    "paymentNote": "Thanh toán qua VietQR/MoMo hoặc tại quầy.",
     "processing": "Đang xử lý...",
     "slotBooked": "Đã đặt",
     "slotPast": "Đã qua giờ",
@@ -103,9 +102,8 @@
     "step2": "Bước 2: Chọn sân con & thời lượng",
     "step3": "Bước 3: Chọn khung giờ (giá tổng cho thời lượng đã chọn)",
     "success": "Đặt thành công! Mã {reference} — trạng thái {status}. Xem ở \"Lịch đặt của tôi\".",
-    "summary": "Tổng giá {duration} giờ từ {startTime}: các giờ được tính theo đúng bảng giá từng khung giờ.",
     "title": "Đặt sân — {venueName}",
-    "total": "Tổng (tính lại ở server): {total}"
+    "total": "Tổng tiền: {total}"
   },
   "common": {
     "backHome": "Về trang chủ",
