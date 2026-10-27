@@ -4,8 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import type * as Leaflet from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "./google-maps.css";
-import { GOOGLE_STYLE_TILE_ATTRIBUTION, GOOGLE_STYLE_TILE_URL, applyGoogleChrome, googlePinIcon } from "./google-maps-style";
+// Leaflet's default marker artwork: the CSS-relative image URLs break
+// under a bundler, so hand the icon the emitted asset URLs explicitly.
+// These static imports live in this lazy chunk only (see VenueMapSection).
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { formatVND } from "@/lib/booking/logic";
 import { sportName } from "@/i18n/vocab";
 import type { VenueMapPoint } from "@/lib/public-data";
@@ -107,12 +111,15 @@ export default function VenueMap({ points }: { points: VenueMapPoint[] }) {
     (async () => {
       const L = (await import("leaflet")) as unknown as typeof Leaflet;
       if (cancelled || !containerRef.current) return;
-      map = L.map(containerRef.current, { zoomControl: false, attributionControl: false }).setView(HCMC_CENTER, 11);
-      applyGoogleChrome(L, map);
-      L.tileLayer(GOOGLE_STYLE_TILE_URL, {
-        attribution: GOOGLE_STYLE_TILE_ATTRIBUTION,
-        subdomains: "abcd",
-        maxZoom: 20,
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: markerIcon2x.src,
+        iconUrl: markerIcon.src,
+        shadowUrl: markerShadow.src,
+      });
+      map = L.map(containerRef.current).setView(HCMC_CENTER, 11);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
       }).addTo(map);
       leafletRef.current = L;
       mapRef.current = map;
@@ -136,9 +143,8 @@ export default function VenueMap({ points }: { points: VenueMapPoint[] }) {
     const markers = markersRef.current;
     if (!mapReady || !L || !map || !markers) return;
     markers.clearLayers();
-    const pinIcon = googlePinIcon(L);
     for (const point of points) {
-      const marker = L.marker([point.latitude, point.longitude], { icon: pinIcon });
+      const marker = L.marker([point.latitude, point.longitude]);
       marker.bindPopup(buildPopupContent(L, point, labelsRef.current));
       marker.addTo(markers);
     }
