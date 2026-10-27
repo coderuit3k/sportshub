@@ -67,7 +67,14 @@ function districtNeedles(district: string): string[] {
 }
 
 function districtColumnMatches(v: VenueRow, district: string): boolean {
-  return districtNeedles(district).some((n) => foldedIncludes(v.district, n));
+  if (districtNeedles(district).some((n) => foldedIncludes(v.district, n))) return true;
+  // Token form, district field only: "Thu Duc City" vs column "Thủ Đức".
+  const qTokens = districtTokens(district);
+  if (qTokens.length > 0 && qTokens.some((t) => !/^\d+$/.test(t))) {
+    const colTokens = new Set(foldTokens(v.district));
+    return qTokens.every((t) => colTokens.has(t));
+  }
+  return false;
 }
 
 function districtMatches(v: VenueRow, district: string): boolean {
@@ -77,7 +84,27 @@ function districtMatches(v: VenueRow, district: string): boolean {
     const aliases = DISTRICT_ADDRESS_ALIASES[n] ?? [];
     if (aliases.some((alias) => foldedIncludes(v.address, alias))) return true;
   }
+  // Token form over district+address: word order/suffixes a model may
+  // add ("Thu Duc City", "city of Thu Duc") cannot break the match.
+  // Skipped for purely numeric districts ("Quận 7" → token "7"), where
+  // a stray digit token in an unrelated address would false-match.
+  const qTokens = districtTokens(district);
+  if (qTokens.length > 0 && qTokens.some((t) => !/^\d+$/.test(t))) {
+    const venueTokens = new Set([...foldTokens(v.district), ...foldTokens(v.address)]);
+    if (qTokens.every((t) => venueTokens.has(t))) return true;
+    const aliases = DISTRICT_ADDRESS_ALIASES[qTokens.join(" ")] ?? [];
+    if (aliases.some((alias) => foldedIncludes(v.address, alias))) return true;
+  }
   return false;
+}
+
+/** Administrative filler tokens dropped before token-form matching. */
+const DISTRICT_GENERIC_TOKENS = new Set([
+  "quan", "thanh", "pho", "tp", "city", "district", "thi", "xa", "huyen",
+]);
+
+function districtTokens(district: string): string[] {
+  return foldTokens(district).filter((t) => !DISTRICT_GENERIC_TOKENS.has(t));
 }
 
 /**

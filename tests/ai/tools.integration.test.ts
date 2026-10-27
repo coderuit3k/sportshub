@@ -108,6 +108,18 @@ describe("search_venues", () => {
     expect(ids).toContain("v_linhxuan");
     expect(ids).not.toContain("v_quan7");
   });
+
+  it("district word-order/suffix variants match by tokens (Thu Duc City)", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Thu Duc City", limit: 5 });
+    const ids = res.data!.venues.map((v) => v.venueId);
+    expect(ids).toContain("v_thuduc");
+    expect(ids).toContain("v_linhxuan");
+  });
+
+  it("a numeric district never token-matches stray digits (Quận 7 stays exact)", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Quận 7", limit: 5 });
+    expect(res.data!.venues.map((v) => v.venueId)).toEqual(["v_quan7"]);
+  });
 });
 
 describe("get_venue_profile", () => {

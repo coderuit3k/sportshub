@@ -58,6 +58,7 @@ describe("orchestrator", () => {
     expect(res.answer.evidence.map((e) => e.evidenceId).sort()).toEqual(["gr_light_neg", "gr_light_pos"]);
     expect(res.answer.appliedContext.district).toBe("Thủ Đức");
     expect(res.trace.toolCalls.map((c) => c.tool)).toEqual(["search_venues", "search_review_evidence", "get_bookable_options"]);
+    expect(res.trace.toolCalls[0].input).toMatchObject({ sportSlug: "cau-long", district: "Thủ Đức" });
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
     expect(res.trace.promptVersion).toContain("v3");

@@ -160,7 +160,7 @@ export interface AssistantTrace {
   answerSchemaVersion: string;
   startedAt: string;
   latencyMs: number;
-  toolCalls: { tool: string; status: string; durationMs: number; errorCode: string | null }[];
+  toolCalls: { tool: string; status: string; durationMs: number; errorCode: string | null; input: Record<string, unknown> }[];
   budgetUsed: number;
   budgetLimit: number;
   budgetOutcome: "ok" | "exhausted" | "request_timeout";
@@ -464,6 +464,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
       status: envelope.status,
       durationMs: Date.now() - toolStart,
       errorCode: envelope.error?.code ?? null,
+      input: reply.input,
     });
     registerToolResult(conv, reply.tool, envelope);
     messages.push({ role: "tool", content: JSON.stringify(envelope).slice(0, 24_000) });
