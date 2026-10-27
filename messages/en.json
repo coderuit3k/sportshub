@@ -103,7 +103,8 @@
     "step3": "Step 3: Pick a time slot (total price for the selected duration)",
     "success": "Booking successful! Code {reference} — status {status}. See it under \"My bookings\".",
     "title": "Book — {venueName}",
-    "total": "Total: {total}"
+    "total": "Total: {total}",
+    "preselectUnavailable": "The time you pre-selected has just been taken — please pick another slot."
   },
   "common": {
     "backHome": "Back to home",
@@ -222,7 +223,8 @@
     "notifications": "Notifications",
     "owner": "Venue owner portal",
     "register": "Sign up",
-    "venues": "Find venues"
+    "venues": "Find venues",
+    "assistant": "AI Assistant"
   },
   "sports": {
     "boi-loi": "Swimming",
@@ -305,5 +307,41 @@
     "viewAllVenues": "View all venues",
     "viewList": "List",
     "viewMap": "Map"
+  },
+  "assistant": {
+    "title": "SportsHub AI Assistant",
+    "subtitle": "Say what you need — the assistant finds venues, cross-checks reviews, verifies schedule and reference prices, then hands you over to booking confirmation.",
+    "navLabel": "AI Assistant",
+    "placeholder": "E.g. Find a badminton court in Thu Duc this Saturday evening, 2 hours, under 400k total…",
+    "send": "Send",
+    "sending": "Working…",
+    "statusSearch": "Searching venues…",
+    "statusReviews": "Cross-checking reviews…",
+    "statusSchedule": "Checking schedule and prices…",
+    "suggestion1": "Find a badminton court in Thu Duc this Saturday evening, 2 hours, under 400k total, good lighting preferred",
+    "suggestion2": "Compare the two highest-rated swimming venues in District 7",
+    "suggestion3": "Does this venue get glare?",
+    "referencePriceNote": "Platform reference price, not confirmed by the venue owner",
+    "demoScheduleNote": "Simulated schedule inside SportsHub",
+    "googleSource": "Google review",
+    "inAppSource": "SportsHub review",
+    "viewVenue": "View venue",
+    "fromPerHour": "From {price}/hour",
+    "evidenceTitle": "Review evidence",
+    "viewAtVenue": "View on the venue page",
+    "optionsTitle": "Times and prices",
+    "totalLabel": "Total",
+    "overBudget": "Over the stated budget",
+    "withinBudget": "Within budget",
+    "handoffTitle": "Ready to book",
+    "handoffButton": "Continue to booking confirmation",
+    "loginToConfirm": "You sign in and confirm in the booking page yourself — the assistant never creates bookings.",
+    "quoteNotHeld": "The quote does not hold the slot; availability can change.",
+    "refundPolicy": "Cancellation: full refund before {full}h, {fee}% fee before {partial}h.",
+    "warningsTitle": "Notes",
+    "notConfigured": "The AI assistant is not configured with a model on this system.",
+    "errorGeneric": "Something went wrong calling the assistant. Please try again.",
+    "greeting": "Hi! What sport, which area, and when do you want to play? I will find venues, check reviews and verify the schedule for you.",
+    "starsSuffix": "stars"
   }
 }

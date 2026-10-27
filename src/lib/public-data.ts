@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { storedPrimaryImageUrl } from "@/lib/venue-images";
+import { effectiveRating } from "@/lib/geo/rank";
 
 /**
  * Cached PUBLIC reads (see docs/architecture.md → "Caching & rate limiting").
@@ -239,16 +240,27 @@ export const getCachedVenueList = unstable_cache(
     });
     const withPrice = venues.map((v) => ({ v, minPrice: minPriceOf(v.facilities), createdAtMs: v.createdAt.getTime() }));
     const filtered = withPrice.filter((x) => filters.maxPrice == null || (x.minPrice !== null && x.minPrice <= filters.maxPrice));
+    // Effective rating (Google aggregate first, in-app fallback) via the
+    // shared helper — the SAME basis the minRating filter uses. Sorting
+    // by ratingAvg alone ranked every real venue (ratingAvg = 0) as a tie.
+    const effOf = (x: (typeof filtered)[number]) =>
+      effectiveRating({
+        ratingAvg: x.v.ratingAvg,
+        googleRating: x.v.googleRating,
+        minPrice: x.minPrice,
+        latitude: x.v.latitude,
+        longitude: x.v.longitude,
+      });
     const sorted = [...filtered].sort((a, b) => {
       switch (filters.sort) {
         case "price-asc":
           return (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity);
         case "rating":
-          return b.v.ratingAvg - a.v.ratingAvg;
+          return effOf(b) - effOf(a);
         case "newest":
           return b.createdAtMs - a.createdAtMs;
         default:
-          return b.v.ratingAvg - a.v.ratingAvg;
+          return effOf(b) - effOf(a);
       }
     });
     return sorted.map(({ v, minPrice }) => ({

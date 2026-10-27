@@ -84,7 +84,24 @@ export function BookFacilityButton({ facilityId, label }: { facilityId: string; 
   );
 }
 
-export function BookingWidget({ facilities, venueName, initialDate }: { facilities: FacilityDTO[]; venueName: string; initialDate: string }) {
+export function BookingWidget({
+  facilities,
+  venueName,
+  initialDate,
+  initialFacilityId,
+  initialDuration,
+  initialStartTime,
+}: {
+  facilities: FacilityDTO[];
+  venueName: string;
+  initialDate: string;
+  /** Optional pre-selection (e.g. from the AI assistant's booking
+   * handoff link): applied once, only when the values are valid for
+   * this venue; the user can change everything before confirming. */
+  initialFacilityId?: string;
+  initialDuration?: number;
+  initialStartTime?: string;
+}) {
   // `date` is a plain calendar date (YYYY-MM-DD) in the business timezone
   // (Asia/Ho_Chi_Minh), supplied by the server as `initialDate`. The widget
   // NEVER builds instants from it — slot instants come from the server
@@ -93,9 +110,15 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
   const t = useTranslations("booking");
   const locale = useLocale();
   const [date, setDate] = useState(initialDate);
-  const [facilityId, setFacilityId] = useState(facilities[0]?.id ?? "");
+  const [facilityId, setFacilityId] = useState(
+    initialFacilityId && facilities.some((f) => f.id === initialFacilityId)
+      ? initialFacilityId
+      : (facilities[0]?.id ?? ""),
+  );
   const [slot, setSlot] = useState<DisplaySlot | null>(null);
-  const [duration, setDuration] = useState(1);
+  const [duration, setDuration] = useState(
+    initialDuration && initialDuration >= 1 && initialDuration <= 6 ? initialDuration : 1,
+  );
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -147,6 +170,21 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
   // re-validates everything at booking time.
   const slots: DisplaySlot[] = hourly ? aggregateSlots(hourly, duration) : [];
   const total = slot ? slot.price : 0;
+
+  // One-shot pre-selection from the handoff link: when the requested
+  // start time exists in the loaded grid, select it if it is still
+  // available; if it has just been taken, say so instead of silently
+  // landing on an empty widget.
+  const preselectDone = useRef(false);
+  useEffect(() => {
+    if (!initialStartTime || preselectDone.current || !hourly) return;
+    const wanted = slots.find((s) => s.startTime === initialStartTime);
+    if (!wanted) return;
+    preselectDone.current = true;
+    if (wanted.available) setSlot(wanted);
+    else setMsg(t("preselectUnavailable"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialStartTime, hourly, slots]);
 
   // Known booking statuses get a localized label; anything unexpected
   // falls back to the raw value. API *error* strings stay server-side

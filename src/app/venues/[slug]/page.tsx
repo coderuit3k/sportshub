@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getAvailability } from "@/services/bookings";
-import { todayDateISO, formatTimeHHMM } from "@/lib/time/tz";
+import { todayDateISO, formatTimeHHMM, isValidDateISO } from "@/lib/time/tz";
 import { BookingWidget, BookFacilityButton, FavoriteButton } from "@/components/client-widgets";
 import VenueDetailMapSection from "@/components/VenueDetailMapSection";
 import VenueImage from "@/components/VenueImage";
@@ -35,10 +35,41 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: v ? v.name : "Sân thể thao", description: v?.description };
 }
 
-export default async function VenueDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function VenueDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { slug } = await params;
   const venue = await getCachedVenueDetail(slug);
   if (!venue) notFound();
+  // Optional booking pre-selection (AI assistant handoff link): every
+  // value is re-validated against this venue before it reaches the
+  // widget; anything invalid is ignored and the widget opens normally.
+  const sp = (await searchParams) ?? {};
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const handoffFacility = first(sp.facility);
+  const handoffDate = first(sp.date);
+  const handoffStart = first(sp.start);
+  const handoffDurationRaw = Number(first(sp.duration));
+  const handoff =
+    handoffFacility && venue.facilities.some((f) => f.id === handoffFacility)
+      ? {
+          facilityId: handoffFacility,
+          date:
+            handoffDate && isValidDateISO(handoffDate) && handoffDate >= todayDateISO()
+              ? handoffDate
+              : undefined,
+          start:
+            handoffStart && /^([01]\d|2[0-3]):[0-5]\d$/.test(handoffStart) ? handoffStart : undefined,
+          duration:
+            Number.isInteger(handoffDurationRaw) && handoffDurationRaw >= 1 && handoffDurationRaw <= 6
+              ? handoffDurationRaw
+              : undefined,
+        }
+      : null;
   const t = await getTranslations("venueDetail");
   const tCommon = await getTranslations("common");
   const tSports = await getTranslations("sports");
@@ -49,7 +80,9 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
 
   // Slots are computed for "today" in the business timezone (Asia/Ho_Chi_Minh);
   // the widget fetches other dates from /api/availability with the same semantics.
-  const initialDate = todayDateISO();
+  // A valid handoff date replaces "today" so the pre-selected day is the
+  // one rendered (and fetched) first.
+  const initialDate = handoff?.date ?? todayDateISO();
   const facilitiesDto = [];
   for (const f of venue.facilities) {
     const avail = await getAvailability(f.id, initialDate);
@@ -192,7 +225,14 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
       </div>
       <div className="space-y-4">
         <FavoriteButton venueId={venue.id} loginLabel={t("loginToSave")} />
-        <BookingWidget facilities={facilitiesDto} venueName={venue.name} initialDate={initialDate} />
+        <BookingWidget
+          facilities={facilitiesDto}
+          venueName={venue.name}
+          initialDate={initialDate}
+          initialFacilityId={handoff?.facilityId}
+          initialDuration={handoff?.duration}
+          initialStartTime={handoff?.start}
+        />
       </div>
     </div>
   );

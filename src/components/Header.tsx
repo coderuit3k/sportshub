@@ -21,6 +21,7 @@ export default async function Header() {
           <Link className="hover:text-accent" href="/">{t("home")}</Link>
           <Link className="hover:text-accent" href="/venues">{t("venues")}</Link>
           <Link className="hover:text-accent" href="/community">{t("community")}</Link>
+          <Link className="hover:text-accent" href="/assistant">{t("assistant")}</Link>
           {user && <Link className="hover:text-accent" href="/my-bookings">{t("myBookings")}</Link>}
           {user?.role === "OWNER" && <Link className="hover:text-accent" href="/owner">{t("owner")}</Link>}
           {user?.role === "ADMIN" && <Link className="hover:text-accent" href="/admin">{t("admin")}</Link>}
@@ -47,7 +48,7 @@ export default async function Header() {
         </div>
       </div>
       <nav className="flex gap-4 overflow-x-auto px-4 pb-2 text-sm md:hidden" aria-label={t("mobileLabel")}>
-        <Link href="/venues">{t("venues")}</Link><Link href="/community">{t("community")}</Link>
+        <Link href="/venues">{t("venues")}</Link><Link href="/community">{t("community")}</Link><Link href="/assistant">{t("assistant")}</Link>
         {user && <Link href="/my-bookings">{t("myBookingsShort")}</Link>}
       </nav>
     </header>

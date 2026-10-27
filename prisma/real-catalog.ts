@@ -48,7 +48,7 @@
  *   final google-venue count equals the data count (119).
  */
 import type { PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   CATALOG_OWNER_EMAIL,
   DEAD_BOOKING_STATUSES,
@@ -68,6 +68,27 @@ import { REAL_VENUES, normalizeOpenHours, type RealVenue } from "./real-venues-d
 import { REAL_GOOGLE_REVIEWS } from "./real-reviews-data";
 
 type Db = PrismaClient;
+
+/**
+ * Stable identity for a harvested Google review. Google Maps exposes no
+ * review ID to us, so the internal key is DETERMINISTIC — a hash of the
+ * venue slug + author + relative time + full text. The same review keeps
+ * the same id across every catalog re-sync (citations and evidence packs
+ * built on it survive deploys); an edited review hashes differently and
+ * is therefore a NEW evidence item, which is the correct semantics —
+ * old citations must not silently point at changed text. This is an
+ * internal SportsHub key, never a Google-issued ID. Exact duplicate
+ * rows within one venue (same author/time/text) collapse into one.
+ */
+export function stableGoogleReviewId(
+  venueSlug: string,
+  review: { authorName: string; relativeTime: string; text: string },
+): string {
+  const hash = createHash("sha256")
+    .update(`${venueSlug}|${review.authorName}|${review.relativeTime}|${review.text}`)
+    .digest("hex");
+  return `gr_${hash.slice(0, 32)}`;
+}
 
 const round3k = (v: number) => Math.round(v / 1000) * 1000;
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -340,19 +361,40 @@ export async function ensureRealCatalog(prisma: Db): Promise<EnsureRealCatalogRe
     const venueId = googleVenueIds.get(def.slug);
     if (!venueId) continue;
     const rows = reviewsBySlug.get(def.slug) ?? [];
-    await prisma.googleReview.deleteMany({ where: { venueId } });
-    if (rows.length > 0) {
-      await prisma.googleReview.createMany({
-        data: rows.map((r) => ({
-          venueId,
-          authorName: r.authorName,
-          rating: r.rating,
-          text: r.text,
-          relativeTime: r.relativeTime,
-        })),
-      });
+    // Stable-identity sync (NOT delete-all + recreate): each desired row
+    // carries its deterministic id; rows whose ids are no longer desired
+    // are deleted (review removed or edited — an edit yields a new id,
+    // so the stale text can never linger), rows already present with the
+    // desired id are left untouched (same id ⇒ same content, by
+    // construction of the hash), and only genuinely new ids are inserted.
+    const desired = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) {
+      const id = stableGoogleReviewId(def.slug, r);
+      if (!desired.has(id)) desired.set(id, r);
     }
-    googleReviews += rows.length;
+    const existing = await prisma.googleReview.findMany({
+      where: { venueId },
+      select: { id: true },
+    });
+    const existingIds = new Set(existing.map((e) => e.id));
+    const staleIds = [...existingIds].filter((id) => !desired.has(id));
+    if (staleIds.length > 0) {
+      await prisma.googleReview.deleteMany({ where: { venueId, id: { in: staleIds } } });
+    }
+    const newRows = [...desired.entries()]
+      .filter(([id]) => !existingIds.has(id))
+      .map(([id, r]) => ({
+        id,
+        venueId,
+        authorName: r.authorName,
+        rating: r.rating,
+        text: r.text,
+        relativeTime: r.relativeTime,
+      }));
+    if (newRows.length > 0) {
+      await prisma.googleReview.createMany({ data: newRows });
+    }
+    googleReviews += desired.size;
   }
 
   /* ---------------- Final verification ------------------------------- */

@@ -60,6 +60,10 @@ const MANIFEST: Record<string, Classification> = {
   // → generic bucket.
   "/api/owner/venue-photo/upload": { methods: ["POST"], handlerLimiter: null },
   "/api/owner/venue-photo": { methods: ["POST", "DELETE"], handlerLimiter: "genericWriteLimiter" },
+  // AI assistant chat: no business mutation, but each turn fans out to
+  // tool executions + a paid model call → its own dedicated bucket
+  // (per user when logged in, per IP otherwise), consumed in-handler.
+  "/api/assistant": { methods: ["POST"], handlerLimiter: "aiAssistantLimiter" },
 };
 
 /** Routes allowed to mutate with no per-user bucket (global net only). */

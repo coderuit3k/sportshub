@@ -443,3 +443,7 @@ export const sessionJoinLimiter = createRateLimiter({ limit: 30, windowMs: 10 * 
 export const reviewCreateLimiter = createRateLimiter({ limit: 10, windowMs: 60 * 60_000, prefix: "sportshub:review-create" });
 export const passwordChangeLimiter = createRateLimiter({ limit: 5, windowMs: 60 * 60_000, prefix: "sportshub:password-change" });
 export const genericWriteLimiter = createRateLimiter({ limit: 60, windowMs: 10 * 60_000, prefix: "sportshub:write" });
+/** AI assistant chat: each turn can fan out to several tool executions
+ * and a paid model call, so it gets its own tighter bucket on top of
+ * the per-request tool budget enforced by the orchestrator. */
+export const aiAssistantLimiter = createRateLimiter({ limit: 20, windowMs: 10 * 60_000, prefix: "sportshub:ai-assistant" });

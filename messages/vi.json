@@ -103,7 +103,8 @@
     "step3": "Bước 3: Chọn khung giờ (giá tổng cho thời lượng đã chọn)",
     "success": "Đặt thành công! Mã {reference} — trạng thái {status}. Xem ở \"Lịch đặt của tôi\".",
     "title": "Đặt sân — {venueName}",
-    "total": "Tổng tiền: {total}"
+    "total": "Tổng tiền: {total}",
+    "preselectUnavailable": "Khung giờ bạn chọn trước vừa hết trống — vui lòng chọn giờ khác."
   },
   "common": {
     "backHome": "Về trang chủ",
@@ -222,7 +223,8 @@
     "notifications": "Thông báo",
     "owner": "Kênh chủ sân",
     "register": "Đăng ký",
-    "venues": "Tìm sân"
+    "venues": "Tìm sân",
+    "assistant": "Trợ lý AI"
   },
   "sports": {
     "boi-loi": "Bơi lội",
@@ -305,5 +307,41 @@
     "viewAllVenues": "Xem mọi sân",
     "viewList": "Danh sách",
     "viewMap": "Bản đồ"
+  },
+  "assistant": {
+    "title": "Trợ lý AI SportsHub",
+    "subtitle": "Nêu nhu cầu — trợ lý tìm sân, đối chiếu đánh giá, kiểm tra lịch và giá tham chiếu, rồi chuyển bạn sang bước xác nhận đặt sân.",
+    "navLabel": "Trợ lý AI",
+    "placeholder": "Ví dụ: Tìm sân cầu lông ở Thủ Đức tối thứ Bảy, chơi 2 tiếng, tổng dưới 400 nghìn…",
+    "send": "Gửi",
+    "sending": "Đang xử lý…",
+    "statusSearch": "Đang tìm sân…",
+    "statusReviews": "Đang đối chiếu review…",
+    "statusSchedule": "Đang kiểm tra lịch và giá…",
+    "suggestion1": "Tìm sân cầu lông ở Thủ Đức tối thứ Bảy này, chơi 2 tiếng, tổng dưới 400 nghìn, ưu tiên ánh sáng tốt",
+    "suggestion2": "So sánh hai sân bơi được đánh giá cao nhất ở quận 7",
+    "suggestion3": "Sân này có bị chói nắng không?",
+    "referencePriceNote": "Giá tham chiếu của nền tảng, chưa được chủ sân xác nhận",
+    "demoScheduleNote": "Lịch mô phỏng trong SportsHub",
+    "googleSource": "Đánh giá Google",
+    "inAppSource": "Đánh giá trong SportsHub",
+    "viewVenue": "Xem sân",
+    "fromPerHour": "Từ {price}/giờ",
+    "evidenceTitle": "Bằng chứng từ review",
+    "viewAtVenue": "Xem tại trang sân",
+    "optionsTitle": "Khung giờ và giá",
+    "totalLabel": "Tổng",
+    "overBudget": "Vượt ngân sách đã nêu",
+    "withinBudget": "Trong ngân sách",
+    "handoffTitle": "Sẵn sàng đặt sân",
+    "handoffButton": "Đi tới xác nhận đặt sân",
+    "loginToConfirm": "Bạn cần đăng nhập và tự xác nhận trong trang đặt sân — trợ lý không tự tạo đặt sân.",
+    "quoteNotHeld": "Báo giá không giữ chỗ; slot có thể thay đổi.",
+    "refundPolicy": "Huỷ: hoàn toàn bộ trước {full} giờ, hoàn {fee}% phí trước {partial} giờ.",
+    "warningsTitle": "Lưu ý",
+    "notConfigured": "Trợ lý AI chưa được cấu hình model trên hệ thống này.",
+    "errorGeneric": "Có lỗi khi gọi trợ lý. Vui lòng thử lại.",
+    "greeting": "Xin chào! Bạn muốn chơi môn gì, ở khu vực nào, vào lúc nào? Tôi sẽ tìm sân, xem review và kiểm tra lịch giúp bạn.",
+    "starsSuffix": "sao"
   }
 }

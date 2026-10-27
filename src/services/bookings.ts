@@ -21,8 +21,14 @@ export interface CreateBookingInput {
  */
 export interface AvailabilitySlot { startAt: Date; endAt: Date; price: number; available: boolean; past: boolean }
 
-export async function getAvailability(facilityId: string, dateISO: string) {
-  const facility = await prisma.facility.findUnique({
+/**
+ * Availability for one facility on one Saigon calendar date.
+ * `db` is injectable (defaults to the app-wide client) so read-only
+ * consumers like the AI assistant tools can run the EXACT same slot
+ * logic against a test database — no re-implementation, no drift.
+ */
+export async function getAvailability(facilityId: string, dateISO: string, db: import("@prisma/client").PrismaClient = prisma) {
+  const facility = await db.facility.findUnique({
     where: { id: facilityId },
     include: { venue: { include: { hours: true } }, priceRules: true },
   });
@@ -35,10 +41,10 @@ export async function getAvailability(facilityId: string, dateISO: string) {
   const [ch, cm] = hours.closeTime.split(":").map(Number);
   const dayStart = startOfDay(dateISO);
   const dayEnd = endOfDay(dateISO);
-  const bookings = await prisma.booking.findMany({
+  const bookings = await db.booking.findMany({
     where: { facilityId, status: { in: ACTIVE_BOOKING_STATUSES }, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
   });
-  const blocked = await prisma.blockedTime.findMany({
+  const blocked = await db.blockedTime.findMany({
     where: { facilityId, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
   });
   const slots: AvailabilitySlot[] = [];

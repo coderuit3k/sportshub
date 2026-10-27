@@ -1,0 +1,426 @@
+{
+  "ranAt": "2026-10-27T15:17:13.706Z",
+  "model": "scripted (protocol replay) — measures tools/orchestration, NOT real-LLM quality",
+  "fixture": "tests/ai/fixtures.ts (SQLite throwaway DB)",
+  "total": 50,
+  "passed": 50,
+  "dev": {
+    "total": 34,
+    "passed": 34
+  },
+  "holdout": {
+    "total": 16,
+    "passed": 16
+  },
+  "stability": {
+    "sample": 10,
+    "agreed": 10
+  },
+  "noWriteInvariant": true,
+  "latencyMs": {
+    "p50": 3,
+    "p95": 11
+  },
+  "results": [
+    {
+      "id": "AI-001",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 11
+    },
+    {
+      "id": "AI-002",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-003",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 4
+    },
+    {
+      "id": "AI-004",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-005",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-006",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 0
+    },
+    {
+      "id": "AI-007",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 0
+    },
+    {
+      "id": "AI-008",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-009",
+      "split": "holdout",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-010",
+      "split": "holdout",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-011",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-012",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 2
+    },
+    {
+      "id": "AI-013",
+      "split": "holdout",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-014",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-015",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 2
+    },
+    {
+      "id": "AI-016",
+      "split": "holdout",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-017",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 4
+    },
+    {
+      "id": "AI-018",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-019",
+      "split": "holdout",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-020",
+      "split": "dev",
+      "category": "search",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 2
+    },
+    {
+      "id": "AI-021",
+      "split": "dev",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 16
+    },
+    {
+      "id": "AI-022",
+      "split": "dev",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 4
+    },
+    {
+      "id": "AI-023",
+      "split": "dev",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 4
+    },
+    {
+      "id": "AI-024",
+      "split": "dev",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 24
+    },
+    {
+      "id": "AI-025",
+      "split": "dev",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 1
+    },
+    {
+      "id": "AI-026",
+      "split": "dev",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 7
+    },
+    {
+      "id": "AI-027",
+      "split": "holdout",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 5
+    },
+    {
+      "id": "AI-028",
+      "split": "holdout",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-029",
+      "split": "holdout",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 6
+    },
+    {
+      "id": "AI-030",
+      "split": "holdout",
+      "category": "review",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 5
+    },
+    {
+      "id": "AI-031",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 9
+    },
+    {
+      "id": "AI-032",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 7
+    },
+    {
+      "id": "AI-033",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 7
+    },
+    {
+      "id": "AI-034",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 9
+    },
+    {
+      "id": "AI-035",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 6
+    },
+    {
+      "id": "AI-036",
+      "split": "holdout",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 6
+    },
+    {
+      "id": "AI-037",
+      "split": "holdout",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 6
+    },
+    {
+      "id": "AI-038",
+      "split": "holdout",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 5
+    },
+    {
+      "id": "AI-039",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-040",
+      "split": "dev",
+      "category": "schedule",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-041",
+      "split": "dev",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 2
+    },
+    {
+      "id": "AI-042",
+      "split": "dev",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-043",
+      "split": "dev",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 6
+    },
+    {
+      "id": "AI-044",
+      "split": "dev",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 0
+    },
+    {
+      "id": "AI-045",
+      "split": "dev",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 1
+    },
+    {
+      "id": "AI-046",
+      "split": "holdout",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-047",
+      "split": "holdout",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-048",
+      "split": "holdout",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 2
+    },
+    {
+      "id": "AI-049",
+      "split": "holdout",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 3
+    },
+    {
+      "id": "AI-050",
+      "split": "dev",
+      "category": "edge",
+      "pass": true,
+      "failures": [],
+      "latencyMs": 1
+    }
+  ]
+}

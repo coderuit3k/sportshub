@@ -82,6 +82,23 @@ consistently across list, map and featured ranking.
 - Venue approval queue, user management (grant/revoke roles including
   ADMIN, reset password, lock account — self-demotion blocked), audit log
 
+**AI assistant** (`/assistant`)
+- Vietnamese conversational agent over seven typed, read-only tools
+  (venue search, profiles, verbatim review evidence, review stats,
+  live availability + quotes, same-condition comparison, booking
+  handoff) with explicit conversation state, hard tool/time budgets,
+  and answers validated + hydrated server-side from tool results
+- Field-level provenance everywhere: Google aggregates stay separate
+  from in-app ratings, prices are labelled platform reference prices,
+  the schedule is labelled as the SportsHub demo schedule
+- The assistant never creates a booking — it prepares a handoff card
+  into the existing booking widget; runs on **Amazon Bedrock**
+  (Claude Haiku 4.5, `AI_PROVIDER=bedrock` + AWS credentials; the bare
+  model ID resolves to the region's inference profile automatically),
+  with a kill switch (`AI_ASSISTANT_ENABLED=false`)
+- Docs: `docs/ai-assistant.md`, `docs/ai-tools.md`,
+  `docs/ai-evaluation.md`, `docs/ai-demo-runbook.md`
+
 **Platform**
 - Rate limiting on auth, booking and API writes (429 + `Retry-After`,
   `{ code: "RATE_LIMITED" }` contract)
@@ -121,6 +138,7 @@ npm run dev                 # http://localhost:3000
 | `DATABASE_URL_UNPOOLED` | prod | Direct Neon connection used by build-time db push |
 | `AUTH_SECRET` | yes | JWT signing secret |
 | `NEXT_PUBLIC_APP_URL` | yes | Public base URL of the deployment |
+| `AI_PROVIDER`, `AI_MODEL`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | optional | AI assistant on Amazon Bedrock (Claude Haiku 4.5); without AWS credentials the assistant reports a typed config error |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | optional | Upstash Redis; without both, rate limiting falls back to per-instance memory |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | optional | Cloudflare R2 photo storage; all five or uploads stay disabled (photos still display from the built-in photo pools) |
 
