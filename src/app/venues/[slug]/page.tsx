@@ -9,7 +9,7 @@ import SportIcon from "@/components/SportIcon";
 import AmenityIcon from "@/components/AmenityIcon";
 import { formatVND } from "@/lib/booking/logic";
 import { getCachedVenueDetail } from "@/lib/public-data";
-import { MapPin, Star, Clock, ShieldCheck, Navigation } from "lucide-react";
+import { MapPin, Star, ShieldCheck, Navigation } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import { amenityName, sportName } from "@/i18n/vocab";
@@ -57,7 +57,6 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
       slots: (avail?.slots ?? []).map((s) => ({ startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(), startTime: formatTimeHHMM(s.startAt), price: s.price, available: s.available, past: s.past })),
     });
   }
-  const dayNames = t.raw("days") as unknown as string[];
   const priceRows = venue.facilities[0]?.priceRules ?? [];
   // Keyless maps (no API key / no maps provider account):
   // - "Chỉ đường" deep-links to Google Maps directions with a text query.
@@ -119,8 +118,6 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
             <li>{t("cancelPartial", { hours: venue.cancelPartialBeforeHours, percent: venue.cancelPartialFeePercent })}</li>
             <li>{t("cancelNone", { hours: venue.cancelPartialBeforeHours })}</li>
           </ul>
-          <p className="mt-2 flex items-center gap-1 text-sm text-slate-500"><Clock className="h-4 w-4" /> {venue.hours[0] ? t("sampleHours", { day: dayNames[venue.hours[0].dayOfWeek], open: venue.hours[0].openTime, close: venue.hours[0].closeTime }) : "—"}</p>
-          <p className="mt-1 text-sm">{venue.instantBooking ? t("instantBooking") : t("ownerApproval")}</p>
         </section>
         <section className="card p-5">
           <h2 className="mb-3 font-bold">{t("reviewsHeading")}</h2>
