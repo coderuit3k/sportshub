@@ -176,7 +176,7 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
                           </span>
                           <span className="text-xs text-slate-400">{r.relativeTime}</span>
                         </p>
-                        <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{r.text}</p>
+                        <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-slate-700">{r.text}</p>
                       </div>
                     </div>
                   </article>
