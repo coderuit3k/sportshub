@@ -1,26 +1,102 @@
 # SportsHub — Vietnam Sports Discovery, Booking & Community Platform
 
-Production-oriented MVP built from the SportsHub master prompt. Original product, fictional seed data.
+Discover, book and play: real sports venues across Ho Chi Minh City with live
+availability, server-side pricing, community match sessions ("Play Together"),
+and owner/admin consoles.
 
-> ⚠️ Payments are **SIMULATED only**. No real money moves. Every Payment record is labelled `SIMULATED`.
+**Live:** https://sportshub-pi-five.vercel.app
 
-## Stack (with documented environment trade-offs)
+> ⚠️ Payments are **SIMULATED only** — no real money moves, and every Payment
+> record is labelled `SIMULATED`. Outbound email is likewise simulated
+> (in-app notifications are real). A real payment/email provider is the main
+> remaining step before a commercial launch, together with a paid Vercel
+> plan and a custom domain.
+
+## Stack
 
 - Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind CSS 3
-- Prisma ORM. **Local dev: SQLite** (`DATABASE_URL="file:./dev.db"`) because this VM originally had no PostgreSQL/Docker.
-  Production schema ships as `prisma/schema.postgresql.prisma` — **PostgreSQL path verified end-to-end on 2026-10-23 (PostgreSQL 16.15: db push, exclusion constraint, seed, app smoke test)**, see `docs/database.md`.
-- Auth: bcryptjs + `jose` JWT in an httpOnly cookie (Auth.js-equivalent choice, see `docs/security.md`). RBAC: `PLAYER` / `OWNER` / `ADMIN`.
-- Design tokens from the Stitch project: primary `#0F5132`, secondary `#10B981`, accent `#F59E0B`, neutral `#0F172A`; fonts Plus Jakarta Sans + Inter.
-- UI language: Vietnamese. Currency VND, display timezone Asia/Ho_Chi_Minh.
+- Prisma ORM — **SQLite for local dev**, **PostgreSQL in production**
+  (`prisma/schema.postgresql.prisma`, hosted on Neon, Singapore region)
+- Auth: bcryptjs + `jose` JWT in an httpOnly cookie. RBAC: `PLAYER` / `OWNER` / `ADMIN`
+- Maps: Leaflet over OpenStreetMap raster tiles (no API key, no WebGL)
+- Venue photo storage: Cloudflare R2 (S3-compatible, presigned uploads)
+- Rate limiting: Upstash Redis (Vercel KV) with a per-instance in-memory fallback
+- i18n: next-intl — Vietnamese (default) + English, persisted by cookie, URLs unchanged
+- Design tokens: primary `#0F5132`, secondary `#10B981`, accent `#F59E0B`;
+  fonts Plus Jakarta Sans + Inter. Currency VND, business timezone Asia/Ho_Chi_Minh
 
-## Quick start
+## The catalog: real venues, real Google ratings
+
+The catalog is **119 real HCMC venues** — 20 per sport across badminton,
+pickleball, mini football, tennis, basketball and swimming (one venue lists
+in two sports, hence 119 unique venues for 120 sport listings). Each venue
+carries its real **Google rating and rating count**, shown with a "Google
+reviews" source label, plus a selection of its Google review texts
+(604 in total) on the detail page. SportsHub's own in-app ratings are tracked
+separately and never merged into the Google figures.
+
+The catalog is data-as-code and self-healing:
+
+- `prisma/real-venues-data.ts` — the venue set (name, address, coordinates, Google aggregates)
+- `prisma/real-reviews-data.ts` — the Google review texts, keyed by venue slug
+- `prisma/real-catalog.ts` — `ensureRealCatalog()` runs on **every production
+  build** (via `prisma/deploy-db.ts`): it retires any non-Google venue
+  (live bookings block the purge and fail the build loudly instead of losing
+  data) and re-syncs venues + reviews, so a data-only edit redeploys cleanly.
+  The same step ends `prisma/seed.ts`, so a fresh local DB converges to the
+  identical catalog.
+
+Rating filters use the *effective* rating (`googleRating ?? in-app ratingAvg`)
+consistently across list, map and featured ranking.
+
+## Features
+
+**Discovery**
+- Home with featured venues (ranked by rating, then distance, then price —
+  distance is computed in the browser only and never sent to the server)
+- Venue explore with combinable filters (sport, district, price, rating,
+  amenities) as URL params; list **and** map views sharing one filter set
+- Venue detail: photo gallery, facility ("sân con") cards with quick-book,
+  live availability grid (past and booked slots visibly locked), Leaflet map
+  + Google Maps directions link, Google reviews section
+- Favorites with optimistic hearts; full vi/en language switch
+
+**Booking**
+- 3-step booking widget, dd/MM/yyyy date field, per-slot totals for the
+  chosen duration, live grid refresh after booking
+- Server-side pricing rules (off-peak / peak / weekend), transactional
+  double-booking prevention backed by a PostgreSQL `tsrange` exclusion
+  constraint, idempotent booking creation
+- Cancellation with refunds computed from the policy snapshot stored on the
+  booking; My Bookings with status tabs
+
+**Community — Play Together**
+- Open match sessions per venue: create, join, leave, capacity and
+  duplicate-join prevention
+
+**Owner console**
+- Dashboard stats, venue management, booking approve/reject,
+  photo uploads straight to R2 via presigned URLs
+
+**Admin console**
+- Venue approval queue, user management (grant/revoke roles including
+  ADMIN, reset password, lock account — self-demotion blocked), audit log
+
+**Platform**
+- Rate limiting on auth, booking and API writes (429 + `Retry-After`,
+  `{ code: "RATE_LIMITED" }` contract)
+- Cached public reads (`unstable_cache` DTOs in `src/lib/public-data.ts`)
+- `GET /api/health` readiness probe (503 when the DB is unreachable)
+- Branded 404 / error / loading pages, sitemap + robots
+
+## Quick start (local)
 
 ```bash
 npm install
 cp .env.example .env        # local default already works with SQLite
 npx prisma generate
 npx prisma db push
-npm run db:seed
+npm run db:seed             # seeds accounts + the same 119-venue real catalog
 npm run dev                 # http://localhost:3000
 ```
 
@@ -32,42 +108,27 @@ npm run dev                 # http://localhost:3000
 | Venue Owner | owner@sportshub.local | `Password123!` |
 | Admin | admin@sportshub.local | `Password123!` |
 
-> **Production (quan trọng):** the seeded demo accounts above ship with a PUBLIC
-> password. Immediately after the first production deploy, sign in as admin and
-> rotate or lock every demo account from **Admin → Người dùng** ("Đặt mật khẩu
-> mới" / "Khoá tài khoản" — see docs/security.md, "Demo-account rotation").
-> The login page no longer displays these credentials (Phase 3).
+> **Production (important):** the seeded accounts above ship with a PUBLIC
+> password. Rotate or lock them from **Admin → Người dùng** immediately after
+> the first production deploy (see `docs/security.md`, "Demo-account
+> rotation"). The login page does not display these credentials.
+
+## Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | SQLite file locally; pooled Neon URL in production |
+| `DATABASE_URL_UNPOOLED` | prod | Direct Neon connection used by build-time db push |
+| `AUTH_SECRET` | yes | JWT signing secret |
+| `NEXT_PUBLIC_APP_URL` | yes | Public base URL of the deployment |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | optional | Upstash Redis; without both, rate limiting falls back to per-instance memory |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | optional | Cloudflare R2 photo storage; all five or uploads stay disabled (photos still display from the built-in photo pools) |
+
+See `.env.example` for details. Never commit real values.
 
 ## Scripts
 
 - `npm run dev` / `npm run build` / `npm run start`
 - `npm run typecheck` — `tsc --noEmit`
-- `npm test` — Vitest unit tests (pure booking logic, admin user-management policy/guards, rate limiter, change-password validation)
-- `npm run test:e2e` — Playwright E2E (booking flow, change password, community join/leave, RBAC guards).
-  Requires the local DB seeded (`npm run db:seed`) and Chromium installed
-  (`npx playwright install chromium`). Playwright builds + starts the app itself
-  on port 3100 via the config's `webServer`.
-- `npm run db:seed`, `npm run db:push`, `npm run db:generate`
-- CI (`.github/workflows/ci.yml`) runs install → Prisma generate/push/seed → typecheck → unit → E2E.
-  Note: the workflow file exists in the local working tree but is **not on GitHub yet** (the GitHub App
-  lacks the Workflows permission — the repo owner uploads this one file manually), so hosted CI runs
-  start only after that upload.
-
-## Features implemented
-
-Home + venue explore (combinable DB filters, URL params) + venue detail with live availability slots,
-3-step booking widget, server-side pricing, transactional double-booking prevention, idempotent booking
-creation, cancellation refunds from the stored policy snapshot, My Bookings tabs, favorites,
-community sessions (create/join/leave, capacity + duplicate prevention), user profile/preferences,
-owner dashboard (stats, approve/reject), admin dashboard (venue approval queue, users, audit log),
-in-app notifications, sitemap/robots.
-
-Completion round additions: **rate limiting** on login (10 failed / 10 min per IP+email), register
-(5/hour per IP) and booking creation (30 / 10 min per user) — in-memory sliding window, per-instance
-best-effort on serverless, 429 + `Retry-After` (see `docs/security.md`); **self-service password change**
-in /profile (current password verified, min-10 policy, audit-logged); **keyless maps** on venue pages —
-"Chỉ đường" Google Maps directions link for every venue + OpenStreetMap embed when the venue has
-coordinates (seed venues carry demo coordinates); **`GET /api/health`** readiness probe
-(`{ status: "ok", db: "ok" }`, 503 when the DB is unreachable); branded 404 / error / loading pages.
-
-Docs: `docs/architecture.md`, `docs/database.md`, `docs/api.md`, `docs/security.md`, `docs/deployment.md`, `docs/master-prompt.md`.
+- `n
+...[truncated 2315 chars]
