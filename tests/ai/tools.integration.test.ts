@@ -120,6 +120,15 @@ describe("search_venues", () => {
     const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Quận 7", limit: 5 });
     expect(res.data!.venues.map((v) => v.venueId)).toEqual(["v_quan7"]);
   });
+
+  it("a thousands-figure price cap is INVALID_INPUT, not a silent empty (200 ≠ 200k VND)", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", maxReferenceHourlyPrice: 200, limit: 5 });
+    expect(res.status).toBe("error");
+    expect(res.error!.code).toBe("INVALID_INPUT");
+    expect(res.error!.message).toContain("full VND amount");
+    const ok = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", maxReferenceHourlyPrice: 200_000, limit: 5 });
+    expect(ok.status).toBe("ok");
+  });
 });
 
 describe("get_venue_profile", () => {
@@ -307,6 +316,12 @@ describe("get_bookable_options", () => {
     const bad = await getBookableOptions(fixtureCtx(db), { venueId: "v_thuduc", date: SAT, durationHours: 1, sportSlug: "golf" });
     expect(bad.status).toBe("error");
     expect(bad.error!.code).toBe("UNSUPPORTED_FILTER");
+  });
+
+  it("a thousands-figure budget is INVALID_INPUT (400 ≠ 400k VND)", async () => {
+    const res = await getBookableOptions(fixtureCtx(db), { venueId: "v_thuduc", date: SAT, durationHours: 1, budgetAmount: 400, budgetBasis: "total_session" });
+    expect(res.status).toBe("error");
+    expect(res.error!.code).toBe("INVALID_INPUT");
   });
 });
 

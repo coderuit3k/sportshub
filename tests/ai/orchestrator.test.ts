@@ -61,7 +61,7 @@ describe("orchestrator", () => {
     expect(res.trace.toolCalls[0].input).toMatchObject({ sportSlug: "cau-long", district: "Thủ Đức" });
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
-    expect(res.trace.promptVersion).toContain("v3");
+    expect(res.trace.promptVersion).toContain("v4");
   });
 
   it("rejects a hallucinated evidence id and falls back to a limited answer built from verified data", async () => {

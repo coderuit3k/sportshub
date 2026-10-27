@@ -20,12 +20,29 @@ const dateISO = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD")
   .describe("Calendar date in Asia/Ho_Chi_Minh, YYYY-MM-DD");
 
+/**
+ * Money inputs are FULL VND amounts. The floor exists because a real
+ * model was observed passing "200" for "200k" (200,000 VND): without
+ * the floor that silently filtered out every venue and the model
+ * reported "no venues under budget". An implausible amount is now an
+ * INVALID_INPUT error the model can correct, never a silent empty.
+ */
+const vndAmount = (field: string) =>
+  z
+    .number()
+    .int()
+    .min(10_000, {
+      message: `${field} must be a full VND amount (e.g. 200000 for "200k"), not a thousands figure`,
+    })
+    .max(100_000_000)
+    .optional();
+
 export const SearchVenuesInput = z.object({
   query: z.string().trim().max(120).optional(),
   sportSlug: z.string().trim().max(60).optional(),
   district: z.string().trim().max(80).optional(),
   minRating: z.number().min(0).max(5).optional(),
-  maxReferenceHourlyPrice: z.number().int().positive().max(100_000_000).optional(),
+  maxReferenceHourlyPrice: vndAmount("maxReferenceHourlyPrice"),
   amenities: z.array(z.string().trim().max(60)).max(8).optional(),
   limit: z.number().int().min(1).max(MAX_VENUE_RESULTS).default(5),
 });
@@ -66,7 +83,7 @@ export const BookableOptionsInput = z.object({
   preferredStartTime: hhmm.optional(),
   window: z.object({ from: hhmm, to: hhmm }).optional(),
   durationHours: z.number().int().min(1).max(6).default(1),
-  budgetAmount: z.number().int().positive().max(100_000_000).optional(),
+  budgetAmount: vndAmount("budgetAmount"),
   budgetBasis: z.enum(["per_hour", "total_session"]).optional(),
 });
 export type BookableOptionsArgs = z.infer<typeof BookableOptionsInput>;
@@ -78,7 +95,7 @@ export const CompareVenuesInput = z.object({
   date: dateISO.optional(),
   startTime: hhmm.optional(),
   durationHours: z.number().int().min(1).max(6).optional(),
-  budgetAmount: z.number().int().positive().max(100_000_000).optional(),
+  budgetAmount: vndAmount("budgetAmount"),
   budgetBasis: z.enum(["per_hour", "total_session"]).optional(),
 });
 export type CompareVenuesArgs = z.infer<typeof CompareVenuesInput>;
