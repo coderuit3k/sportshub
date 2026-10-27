@@ -21,6 +21,7 @@ export default function VenueImage({
   venueSlug,
   venueName,
   storedImageUrl,
+  mapImageUrl,
   className = "",
   gradientClassName = "from-primary via-secondary to-primary",
   emojiClassName = "text-4xl",
@@ -32,17 +33,24 @@ export default function VenueImage({
   venueName: string;
   /** Stored primary photo URL from the public DTOs; null/omitted → code map only. */
   storedImageUrl?: string | null;
+  /**
+   * Explicit code-map photo that replaces the venue-slug resolution
+   * (e.g. a rotated pool pick from facilityImage() for facility cards).
+   * Omit to resolve from the venue slug as usual.
+   */
+  mapImageUrl?: string | null;
   className?: string;
   gradientClassName?: string;
   emojiClassName?: string;
   emojiAlign?: "left" | "right";
   sizes?: string;
 }) {
-  const mapImage = resolveVenueDisplayImage({
+  const resolvedMapImage = resolveVenueDisplayImage({
     storedImageUrl: null,
     primarySportSlug,
     venueSlug,
   });
+  const mapImage = mapImageUrl !== undefined ? mapImageUrl : resolvedMapImage;
   const candidates = [
     ...new Set([storedImageUrl, mapImage].filter((u): u is string => Boolean(u))),
   ];

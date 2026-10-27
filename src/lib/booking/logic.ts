@@ -102,6 +102,14 @@ export function isSessionFull(currentJoined: number, maxParticipants: number): b
   return currentJoined >= maxParticipants;
 }
 
+/** Cheapest hourly price across a facility's own price rules — the
+ * "Từ …/giờ" figure on its facility card. Null when the facility has
+ * no rules (the card then omits the price line entirely). */
+export function facilityMinPrice(rules: readonly { pricePerHour: number }[]): number | null {
+  if (rules.length === 0) return null;
+  return Math.min(...rules.map((r) => r.pricePerHour));
+}
+
 export function formatVND(amount: number, locale = "vi-VN"): string {
   // Locale-aware price rendering: vi keeps the historical "160.000 đ"
   // format (unit tests + owner/admin pages rely on the default), en uses

@@ -59,6 +59,31 @@ export function FavoriteButton({ venueId, initial = false, loginLabel }: { venue
 export type SlotDTO = HourlySlot;
 export interface FacilityDTO { id: string; name: string; slots: SlotDTO[] }
 
+/** Window event a facility card uses to ask the BookingWidget to select a facility. */
+export const SELECT_FACILITY_EVENT = "sportshub:select-facility";
+/** Stable id of the BookingWidget root — the scroll target for BookFacilityButton. */
+export const BOOKING_WIDGET_ID = "booking-widget";
+
+/**
+ * "Đặt sân này" button on a facility card of the venue detail page:
+ * asks the BookingWidget on the same page (via window CustomEvent) to
+ * select that facility, then smooth-scrolls the widget into view.
+ */
+export function BookFacilityButton({ facilityId, label }: { facilityId: string; label: string }) {
+  return (
+    <button
+      type="button"
+      className="btn-primary mt-3 w-full !py-2 text-sm"
+      onClick={() => {
+        window.dispatchEvent(new CustomEvent(SELECT_FACILITY_EVENT, { detail: { facilityId } }));
+        document.getElementById(BOOKING_WIDGET_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function BookingWidget({ facilities, venueName, initialDate }: { facilities: FacilityDTO[]; venueName: string; initialDate: string }) {
   // `date` is a plain calendar date (YYYY-MM-DD) in the business timezone
   // (Asia/Ho_Chi_Minh), supplied by the server as `initialDate`. The widget
@@ -102,6 +127,21 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilityId, date, cacheKey, hourly, slotError]);
 
+  // A facility card's "Đặt sân này" button asks (window CustomEvent)
+  // for its facility to be selected here — the exact same state change
+  // as picking that facility in the dropdown below.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
+      if (!id || !facilities.some((f) => f.id === id)) return;
+      setFacilityId(id);
+      setSlot(null);
+      setSlotError(null);
+    };
+    window.addEventListener(SELECT_FACILITY_EVENT, handler);
+    return () => window.removeEventListener(SELECT_FACILITY_EVENT, handler);
+  }, [facilities]);
+
   // Aggregate consecutive hourly slots into bookable starts for `duration`
   // (pure helper in lib/booking/logic — unit-tested). The server still
   // re-validates everything at booking time.
@@ -140,7 +180,7 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
     });
   }
   return (
-    <div className="card p-5">
+    <div id={BOOKING_WIDGET_ID} className="card scroll-mt-24 p-5">
       <h3 className="mb-4 text-lg font-bold">{t("title", { venueName })}</h3>
       <p className="label">{t("step1")}</p>
       <DateField className="input mb-3" value={date} minISO={initialDate} ariaLabel={t("dateAria")} onChange={(iso) => { setDate(iso); setSlot(null); setSlotError(null); }} />

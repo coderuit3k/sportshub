@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   VENUE_IMAGES,
+  facilityImage,
   resolveVenueDisplayImage,
   storedPrimaryImageUrl,
   venueImage,
@@ -193,5 +194,39 @@ describe("resolveVenueDisplayImage (display priority)", () => {
         venueSlug: "nowhere",
       }),
     ).toBeNull();
+  });
+});
+
+describe("facilityImage (facility-card pool rotation)", () => {
+  // A slug with NO per-venue override, so venueImage() is the plain
+  // pool pick the hero would show.
+  const slug = "random-venue-for-rotation-test";
+  const pool = VENUE_IMAGES["cau-long"];
+
+  it("is deterministic — same inputs, same photo", () => {
+    expect(facilityImage("cau-long", slug, 2)).toBe(facilityImage("cau-long", slug, 2));
+  });
+
+  it("rotates forward from the hero pick — the first card never repeats it", () => {
+    const hero = venueImage("cau-long", slug);
+    expect(hero).not.toBeNull();
+    expect(facilityImage("cau-long", slug, 0)).not.toBe(hero);
+    expect(facilityImage("cau-long", slug, 0)).toBe(pool[(pool.indexOf(hero!) + 1) % pool.length]);
+  });
+
+  it("sibling cards show different photos", () => {
+    const picks = [0, 1, 2, 3].map((i) => facilityImage("cau-long", slug, i));
+    expect(new Set(picks).size).toBe(picks.length);
+    for (const p of picks) expect(pool).toContain(p);
+  });
+
+  it("wraps around the pool back to the hero pick", () => {
+    expect(facilityImage("cau-long", slug, pool.length - 1)).toBe(venueImage("cau-long", slug));
+  });
+
+  it("returns null for a missing or unknown sport", () => {
+    expect(facilityImage(null, slug, 0)).toBeNull();
+    expect(facilityImage(undefined, slug, 0)).toBeNull();
+    expect(facilityImage("bong-ban", slug, 0)).toBeNull();
   });
 });

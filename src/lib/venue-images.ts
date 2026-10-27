@@ -275,6 +275,29 @@ export function venueImage(
 }
 
 /**
+ * Photo for a facility (sub-court) card on the venue detail page. The
+ * venue hero already shows the venue's own pick from the sport pool
+ * (or its per-venue override), so facility cards rotate FORWARD from
+ * the venue's pool index: facility i shows
+ * pool[(venueIndex + 1 + i) % len]. Sibling cards therefore show
+ * different photos and the first card never repeats the hero pick —
+ * unless the pool holds a single photo. Returns null when the sport
+ * has no pool (the card then renders the gradient + emoji fallback).
+ */
+export function facilityImage(
+  primarySportSlug: string | null | undefined,
+  venueSlug: string,
+  facilityIndex: number,
+): string | null {
+  if (!primarySportSlug) return null;
+  const urls = VENUE_IMAGES[primarySportSlug];
+  if (!urls || urls.length === 0) return null;
+  const venueIndex = stableHash(venueSlug) % urls.length;
+  const offset = (((1 + facilityIndex) % urls.length) + urls.length) % urls.length;
+  return urls[(venueIndex + offset) % urls.length];
+}
+
+/**
  * The venue's stored primary photo URL, or null. `images` must be the
  * venue's VenueImage rows ordered by sortOrder ascending (the primary
  * row first) — the first row whose url is an http(s) URL wins. Rows

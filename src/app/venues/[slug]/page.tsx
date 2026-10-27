@@ -2,12 +2,13 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getAvailability } from "@/services/bookings";
 import { todayDateISO, formatTimeHHMM } from "@/lib/time/tz";
-import { BookingWidget, FavoriteButton } from "@/components/client-widgets";
+import { BookingWidget, BookFacilityButton, FavoriteButton } from "@/components/client-widgets";
 import VenueDetailMapSection from "@/components/VenueDetailMapSection";
 import VenueImage from "@/components/VenueImage";
 import SportIcon from "@/components/SportIcon";
 import AmenityIcon from "@/components/AmenityIcon";
-import { formatVND } from "@/lib/booking/logic";
+import { formatVND, facilityMinPrice } from "@/lib/booking/logic";
+import { facilityImage } from "@/lib/venue-images";
 import { getCachedVenueDetail } from "@/lib/public-data";
 import { MapPin, Star, ShieldCheck, Navigation } from "lucide-react";
 import Link from "next/link";
@@ -93,7 +94,39 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
         </div>
         <section className="card p-5"><h2 className="mb-2 font-bold">{t("about")}</h2><p>{venue.description}</p>
           <h3 className="mb-1 mt-4 font-bold">{t("amenities")}</h3><ul className="flex flex-wrap gap-2">{venue.amenities.map((a) => <li key={a.id} className="chip"><AmenityIcon name={a.name} className="h-3.5 w-3.5" />{amenityName((k) => tAmenities(k), a.name)}</li>)}</ul>
-          <h3 className="mb-1 mt-4 font-bold">{t("facilities")}</h3><ul className="list-inside list-disc">{venue.facilities.map((f) => <li key={f.id}>{t("facilityLine", { name: f.name, sport: sportLabel(f.sport.slug, f.sport.name), surface: f.surface ?? "", capacity: f.capacity })}</li>)}</ul>
+          <h3 className="mb-1 mt-4 font-bold">{t("facilities")}</h3>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            {venue.facilities.map((f, i) => {
+              const minPrice = facilityMinPrice(f.priceRules);
+              return (
+                <article key={f.id} data-testid="facility-card" className="overflow-hidden rounded-2xl border">
+                  {/* Photo: the facility sport's pool, rotated forward from
+                      the venue hero's pick so sibling cards differ. */}
+                  <div className="relative h-40 overflow-hidden">
+                    <VenueImage
+                      primarySportSlug={f.sport.slug}
+                      venueSlug={venue.slug}
+                      venueName={`${venue.name} — ${f.name}`}
+                      mapImageUrl={facilityImage(f.sport.slug, venue.slug, i)}
+                      className="absolute inset-0"
+                      sizes="(max-width: 640px) 100vw, 400px"
+                    />
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-bold">{f.name}</h4>
+                      <span className="chip shrink-0"><SportIcon slug={f.sport.slug} />{sportLabel(f.sport.slug, f.sport.name)}</span>
+                    </div>
+                    {f.surface && <p className="mt-1 text-sm text-slate-600">{f.surface}</p>}
+                    <p className="mt-1 text-sm text-slate-600">{t("facilityCapacity", { count: f.capacity })}</p>
+                    {f.description && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{f.description}</p>}
+                    {minPrice != null && <p className="mt-2 font-semibold text-primary">{tCommon("priceFrom", { price: formatVND(minPrice, locale) })}</p>}
+                    <BookFacilityButton facilityId={f.id} label={t("bookThisCourt")} />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </section>
         <section className="card p-5">
           <h2 className="mb-2 font-bold">{t("location")}</h2>

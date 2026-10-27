@@ -338,6 +338,7 @@ export interface VenueDetailData {
     name: string;
     surface: string | null;
     capacity: number;
+    description: string | null;
     sport: { slug: string; name: string };
     priceRules: { id: string; ruleType: string; pricePerHour: number }[];
   }[];
@@ -387,6 +388,7 @@ export const getCachedVenueDetail = unstable_cache(
         name: f.name,
         surface: f.surface,
         capacity: f.capacity,
+        description: f.description,
         sport: { slug: f.sport.slug, name: f.sport.name },
         priceRules: f.priceRules.map((r) => ({ id: r.id, ruleType: r.ruleType, pricePerHour: r.pricePerHour })),
       })),
@@ -395,6 +397,6 @@ export const getCachedVenueDetail = unstable_cache(
       sessions: venue.sessions.map((s) => ({ id: s.id, title: s.title, startAt: s.startAt.toISOString() })),
     };
   },
-  ["public:venue-detail:v2"],
+  ["public:venue-detail:v3"],
   { revalidate: 300, tags: [VENUES_TAG] },
 );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculatePrice, calculateRefund, overlaps, isValidTransition, canJoinSession, isSessionFull, ruleForHour, isWeekend, aggregateSlots, type HourlySlot } from "@/lib/booking/logic";
+import { calculatePrice, calculateRefund, overlaps, isValidTransition, canJoinSession, isSessionFull, ruleForHour, isWeekend, aggregateSlots, facilityMinPrice, type HourlySlot } from "@/lib/booking/logic";
 import { fromWallTime } from "@/lib/time/tz";
 
 const rules = [
@@ -164,5 +164,16 @@ describe("slot aggregation for multi-hour durations", () => {
     expect(two[1].past).toBe(false); // first hour (18:00) is in the future
     expect(two[0].available).toBe(false);
     expect(two[1].available).toBe(true);
+  });
+});
+
+describe("facilityMinPrice", () => {
+  it("returns the cheapest rule of the facility", () => {
+    expect(facilityMinPrice(rules)).toBe(120000);
+    expect(facilityMinPrice([{ pricePerHour: 90000 }, { pricePerHour: 50000 }])).toBe(50000);
+  });
+
+  it("returns null when the facility has no price rules", () => {
+    expect(facilityMinPrice([])).toBeNull();
   });
 });
