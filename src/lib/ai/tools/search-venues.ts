@@ -27,7 +27,7 @@
  */
 import { SearchVenuesInput, type SearchVenuesArgs } from "../schemas";
 import { errorEnvelope, okEnvelope, ToolErrorCode, type ToolContext, type ToolEnvelope } from "../types";
-import { foldedIncludes, foldVi } from "../text";
+import { foldedIncludes, foldTokens, foldVi } from "../text";
 import { resolveSportSlug, shapeVenueCard, VENUE_INCLUDE, type VenueCardData, type VenueRow } from "./shared";
 import { venueProvenance } from "../types";
 
@@ -80,6 +80,33 @@ function districtMatches(v: VenueRow, district: string): boolean {
   return false;
 }
 
+/**
+ * Free-text query matching. Primary: the whole folded query as a
+ * substring of name/district/address. Fallback (models often pack
+ * sport + district into the query, e.g. "cầu lông thủ đức", which no
+ * single field contains): every query TOKEN must appear as a token
+ * in the combined name+district+address — tokens already enforced by
+ * the district filter are dropped first. Token equality (not
+ * substring) keeps short tokens from firing inside longer words.
+ */
+function queryMatches(v: VenueRow, query: string, districtTokens: Set<string>): boolean {
+  if (
+    foldedIncludes(v.name, query) ||
+    foldedIncludes(v.district, query) ||
+    foldedIncludes(v.address, query)
+  ) {
+    return true;
+  }
+  const qTokens = foldTokens(query).filter((t) => !districtTokens.has(t));
+  if (qTokens.length === 0) return true;
+  const text = new Set([
+    ...foldTokens(v.name),
+    ...foldTokens(v.district),
+    ...foldTokens(v.address),
+  ]);
+  return qTokens.every((t) => text.has(t));
+}
+
 export async function searchVenues(
   ctx: ToolContext,
   rawInput: unknown,
@@ -123,12 +150,10 @@ export async function searchVenues(
       }
     }
     if (args.query) {
-      matched = matched.filter(
-        (v) =>
-          foldedIncludes(v.name, args.query!) ||
-          foldedIncludes(v.district, args.query!) ||
-          foldedIncludes(v.address, args.query!),
+      const districtTokens = new Set(
+        args.district ? districtNeedles(args.district).flatMap((n) => foldTokens(n)) : [],
       );
+      matched = matched.filter((v) => queryMatches(v, args.query!, districtTokens));
     }
     if (args.minRating != null) {
       matched = matched.filter((v) => (v.googleRating ?? v.ratingAvg) >= args.minRating!);

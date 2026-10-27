@@ -60,7 +60,7 @@ describe("orchestrator", () => {
     expect(res.trace.toolCalls.map((c) => c.tool)).toEqual(["search_venues", "search_review_evidence", "get_bookable_options"]);
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
-    expect(res.trace.promptVersion).toContain("v2");
+    expect(res.trace.promptVersion).toContain("v3");
   });
 
   it("rejects a hallucinated evidence id and falls back to a limited answer built from verified data", async () => {

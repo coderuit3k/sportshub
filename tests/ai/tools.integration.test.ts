@@ -97,6 +97,17 @@ describe("search_venues", () => {
     expect(res.error!.code).toBe("UNSUPPORTED_FILTER");
     expect(res.error!.message).toContain("cau-long");
   });
+
+  it("a query packing sport+district still matches via tokens (district tokens dropped)", async () => {
+    const res = await searchVenues(fixtureCtx(db), {
+      sportSlug: "cau-long", district: "Thủ Đức", query: "cầu lông thủ đức", limit: 5,
+    });
+    expect(res.status).toBe("ok");
+    const ids = res.data!.venues.map((v) => v.venueId);
+    expect(ids).toContain("v_thuduc");
+    expect(ids).toContain("v_linhxuan");
+    expect(ids).not.toContain("v_quan7");
+  });
 });
 
 describe("get_venue_profile", () => {

@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-27T16:25:08.974Z",
+  "ranAt": "2026-10-27T16:37:37.541Z",
   "model": "scripted (protocol replay) — measures tools/orchestration, NOT real-LLM quality",
   "fixture": "tests/ai/fixtures.ts (SQLite throwaway DB)",
   "total": 50,
@@ -19,7 +19,7 @@
   "noWriteInvariant": true,
   "latencyMs": {
     "p50": 4,
-    "p95": 14
+    "p95": 16
   },
   "results": [
     {
@@ -28,7 +28,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 14
+      "latencyMs": 16
     },
     {
       "id": "AI-002",
@@ -36,7 +36,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 5
+      "latencyMs": 7
     },
     {
       "id": "AI-003",
@@ -44,7 +44,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 4
+      "latencyMs": 5
     },
     {
       "id": "AI-004",
@@ -52,7 +52,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 4
+      "latencyMs": 6
     },
     {
       "id": "AI-005",
@@ -60,7 +60,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 5
+      "latencyMs": 4
     },
     {
       "id": "AI-006",
@@ -68,7 +68,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 1
+      "latencyMs": 0
     },
     {
       "id": "AI-007",
@@ -76,7 +76,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 0
+      "latencyMs": 1
     },
     {
       "id": "AI-008",
@@ -108,7 +108,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 3
+      "latencyMs": 4
     },
     {
       "id": "AI-012",
@@ -124,7 +124,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 6
+      "latencyMs": 3
     },
     {
       "id": "AI-014",
@@ -148,7 +148,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 4
+      "latencyMs": 3
     },
     {
       "id": "AI-017",
@@ -156,7 +156,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 6
+      "latencyMs": 4
     },
     {
       "id": "AI-018",
@@ -164,7 +164,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 7
+      "latencyMs": 4
     },
     {
       "id": "AI-019",
@@ -172,7 +172,7 @@
       "category": "search",
       "pass": true,
       "failures": [],
-      "latencyMs": 6
+      "latencyMs": 3
     },
     {
       "id": "AI-020",
@@ -188,7 +188,7 @@
       "category": "review",
       "pass": true,
       "failures": [],
-      "latencyMs": 16
+      "latencyMs": 31
     },
     {
       "id": "AI-022",
@@ -204,7 +204,7 @@
       "category": "review",
       "pass": true,
       "failures": [],
-      "latencyMs": 5
+      "latencyMs": 6
     },
     {
       "id": "AI-024",
@@ -236,7 +236,7 @@
       "category": "review",
       "pass": true,
       "failures": [],
-      "latencyMs": 4
+      "latencyMs": 3
     },
     {
       "id": "AI-028",
@@ -252,7 +252,7 @@
       "category": "review",
       "pass": true,
       "failures": [],
-      "latencyMs": 5
+      "latencyMs": 4
     },
     {
       "id": "AI-030",
@@ -276,7 +276,7 @@
       "category": "schedule",
       "pass": true,
       "failures": [],
-      "latencyMs": 7
+      "latencyMs": 5
     },
     {
       "id": "AI-033",
@@ -284,7 +284,7 @@
       "category": "schedule",
       "pass": true,
       "failures": [],
-      "latencyMs": 10
+      "latencyMs": 6
     },
     {
       "id": "AI-034",
@@ -316,7 +316,7 @@
       "category": "schedule",
       "pass": true,
       "failures": [],
-      "latencyMs": 6
+      "latencyMs": 8
     },
     {
       "id": "AI-038",
@@ -324,7 +324,7 @@
       "category": "schedule",
       "pass": true,
       "failures": [],
-      "latencyMs": 7
+      "latencyMs": 5
     },
     {
       "id": "AI-039",
@@ -388,7 +388,7 @@
       "category": "edge",
       "pass": true,
       "failures": [],
-      "latencyMs": 3
+      "latencyMs": 5
     },
     {
       "id": "AI-047",
@@ -396,7 +396,7 @@
       "category": "edge",
       "pass": true,
       "failures": [],
-      "latencyMs": 2
+      "latencyMs": 3
     },
     {
       "id": "AI-048",
@@ -412,7 +412,7 @@
       "category": "edge",
       "pass": true,
       "failures": [],
-      "latencyMs": 3
+      "latencyMs": 4
     },
     {
       "id": "AI-050",
@@ -420,7 +420,7 @@
       "category": "edge",
       "pass": true,
       "failures": [],
-      "latencyMs": 1
+      "latencyMs": 0
     }
   ]
 }

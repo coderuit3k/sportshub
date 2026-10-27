@@ -80,7 +80,7 @@ are platform reference prices and the schedule is the SportsHub demo
 schedule whenever it quotes either (enforced in the system prompt and
 repeated in tool warnings and UI labels).
 
-## Decision policy (system prompt `sportshub-assistant-v2`)
+## Decision policy (system prompt `sportshub-assistant-v3`)
 
 - Counts/shares → stats tool; a review claim → evidence tool; a
   specific time/price → bookable options; comparisons → compare tool.

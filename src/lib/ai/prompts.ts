@@ -6,7 +6,7 @@
 import { TOOLS } from "./tools";
 import { BUSINESS_TZ } from "@/lib/time/tz";
 
-export const PROMPT_VERSION = "sportshub-assistant-v2";
+export const PROMPT_VERSION = "sportshub-assistant-v3";
 export const ANSWER_SCHEMA_VERSION = "answer-v1";
 
 function toolSpecsForPrompt(): string {
@@ -39,6 +39,8 @@ hoặc
 statePatch: các trường ghi nhớ hội thoại khi có thông tin mới — sportSlug, district, dateISO, startTime, durationHours, budgetAmount, budgetBasis ("per_hour"|"total_session"), venueIds (sân đang xét), criteria (mảng tiêu chí). Thông tin mới ghi đè thông tin cũ; đặt null để xoá một trường.
 
 sportSlug CHỈ dùng đúng một trong các giá trị sau: "cau-long" (cầu lông), "pickleball", "bong-da-mini" (bóng đá mini), "quan-vot" (tennis/quần vợt), "bong-ro" (bóng rổ), "boi-loi" (bơi lội). KHÔNG dùng tên tiếng Anh (badminton, tennis, swimming…) cho sportSlug — tool sẽ báo lỗi UNSUPPORTED_FILTER và bạn phải gọi lại với slug đúng.
+
+Khi gọi search_venues: tham số query CHỈ chứa tên sân hoặc từ khoá riêng của sân (ví dụ "minh khai"). KHÔNG gộp môn/quận vào query (đừng gửi query kiểu "cầu lông thủ đức") — môn đi ở sportSlug, quận đi ở district.
 
 answer.type thuộc một trong: clarification | venue_shortlist | venue_comparison | review_insight | booking_handoff | limited_answer | error.
 - message: câu trả lời tiếng Việt ngắn gọn, thân thiện. Mọi con số (giá, điểm, số lượng) phải lấy từ kết quả tool — không tự nghĩ ra. Khi trích review, chèn mã [ev:<evidenceId>] ngay sau ý trích.
