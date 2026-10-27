@@ -104,7 +104,6 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
           {hasCoords && (
             <>
               <VenueDetailMapSection latitude={venue.latitude!} longitude={venue.longitude!} />
-              <p className="mt-1 text-xs text-slate-400">{t("mapCaption")}</p>
             </>
           )}
         </section>
