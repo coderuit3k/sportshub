@@ -57,9 +57,15 @@ export async function compareVenueOptions(
   const evidenceRefs: string[] = [];
 
   try {
+    // Per-venue sub-calls run in PARALLEL (order preserved): against a
+    // remote production database the sequential fan-out alone could
+    // exceed the per-tool timeout. Budget consumption is synchronous,
+    // so sharing one counter across parallel calls stays exact.
+    const profileResults = await Promise.all(
+      args.venueIds.map((venueId) => getVenueProfile(ctx, { venueId })),
+    );
     const profiles = [];
-    for (const venueId of args.venueIds) {
-      const p = await getVenueProfile(ctx, { venueId });
+    for (const p of profileResults) {
       if (p.status === "error" || !p.data) {
         return errorEnvelope(p.error?.code ?? ToolErrorCode.NotFound, p.error?.message ?? "Profile unavailable", {
           warnings,
@@ -76,18 +82,24 @@ export async function compareVenueOptions(
     });
     if (stats.data) warnings.push(...stats.warnings);
 
-    // Same-condition quotes: one identical request shape per venue.
+    // Same-condition quotes: one identical request shape per venue,
+    // fetched in parallel like the profiles above.
     const bestOptions = new Map<string, BookableOption | null>();
     if (args.date && args.durationHours) {
-      for (const venueId of args.venueIds) {
-        const q = await getBookableOptions(ctx, {
-          venueId,
-          date: args.date,
-          preferredStartTime: args.startTime,
-          durationHours: args.durationHours,
-          budgetAmount: args.budgetAmount,
-          budgetBasis: args.budgetBasis,
-        });
+      const quoteResults = await Promise.all(
+        args.venueIds.map((venueId) =>
+          getBookableOptions(ctx, {
+            venueId,
+            date: args.date,
+            preferredStartTime: args.startTime,
+            durationHours: args.durationHours,
+            budgetAmount: args.budgetAmount,
+            budgetBasis: args.budgetBasis,
+          }),
+        ),
+      );
+      quoteResults.forEach((q, i) => {
+        const venueId = args.venueIds[i];
         if (q.data) {
           warnings.push(...q.warnings);
           const available = q.data.options.filter((o) => o.slotAvailable && o.priceStatus === "ok");
@@ -96,7 +108,7 @@ export async function compareVenueOptions(
         } else {
           bestOptions.set(venueId, null);
         }
-      }
+      });
     }
 
     const rows: ComparisonRow[] = [

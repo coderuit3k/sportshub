@@ -110,8 +110,8 @@ repeated in tool warnings and UI labels).
 | `AI_MAX_TOOL_EXECUTIONS` | 10 | total tool executions per turn, composites included |
 | `AI_MAX_EVIDENCE_ROUNDS` | 1 | supplementary evidence rounds per turn |
 | `AI_MAX_MODEL_ROUNDS` | 8 | model turns per user message |
-| `AI_TOOL_TIMEOUT_MS` | 5000 | per-tool deadline |
-| `AI_REQUEST_TIMEOUT_MS` | 30000 | whole-turn deadline |
+| `AI_TOOL_TIMEOUT_MS` | 15000 | per-tool deadline |
+| `AI_REQUEST_TIMEOUT_MS` | 60000 | whole-turn deadline |
 | `AI_MODEL_TIMEOUT_MS` | 20000 | per model call (one bounded retry on 429/5xx) |
 | `AI_PRICE_INPUT_PER_MILLION`, `AI_PRICE_OUTPUT_PER_MILLION` | — | optional; without both, cost is reported `unknown` (null), never 0 |
 

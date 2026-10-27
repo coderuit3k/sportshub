@@ -62,8 +62,8 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
     maxToolExecutions: intEnv("AI_MAX_TOOL_EXECUTIONS", 10),
     maxEvidenceRounds: intEnv("AI_MAX_EVIDENCE_ROUNDS", 1),
     maxModelRounds: intEnv("AI_MAX_MODEL_ROUNDS", 8),
-    toolTimeoutMs: intEnv("AI_TOOL_TIMEOUT_MS", 5_000),
-    requestTimeoutMs: intEnv("AI_REQUEST_TIMEOUT_MS", 30_000),
+    toolTimeoutMs: intEnv("AI_TOOL_TIMEOUT_MS", 15_000),
+    requestTimeoutMs: intEnv("AI_REQUEST_TIMEOUT_MS", 60_000),
     modelTimeoutMs: intEnv("AI_MODEL_TIMEOUT_MS", 20_000),
     pricePerMillion:
       envPrice ??
