@@ -80,7 +80,7 @@ are platform reference prices and the schedule is the SportsHub demo
 schedule whenever it quotes either (enforced in the system prompt and
 repeated in tool warnings and UI labels).
 
-## Decision policy (system prompt `sportshub-assistant-v4`)
+## Decision policy (system prompt `sportshub-assistant-v5`)
 
 - Counts/shares → stats tool; a review claim → evidence tool; a
   specific time/price → bookable options; comparisons → compare tool.
@@ -109,7 +109,7 @@ repeated in tool warnings and UI labels).
 | `AI_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint |
 | `AI_MAX_TOOL_EXECUTIONS` | 10 | total tool executions per turn, composites included |
 | `AI_MAX_EVIDENCE_ROUNDS` | 1 | supplementary evidence rounds per turn |
-| `AI_MAX_MODEL_ROUNDS` | 5 | model turns per user message |
+| `AI_MAX_MODEL_ROUNDS` | 8 | model turns per user message |
 | `AI_TOOL_TIMEOUT_MS` | 5000 | per-tool deadline |
 | `AI_REQUEST_TIMEOUT_MS` | 30000 | whole-turn deadline |
 | `AI_MODEL_TIMEOUT_MS` | 20000 | per model call (one bounded retry on 429/5xx) |

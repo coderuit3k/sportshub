@@ -61,7 +61,7 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
       env.AWS_REGION?.trim() || env.AWS_DEFAULT_REGION?.trim() || "us-east-1",
     maxToolExecutions: intEnv("AI_MAX_TOOL_EXECUTIONS", 10),
     maxEvidenceRounds: intEnv("AI_MAX_EVIDENCE_ROUNDS", 1),
-    maxModelRounds: intEnv("AI_MAX_MODEL_ROUNDS", 5),
+    maxModelRounds: intEnv("AI_MAX_MODEL_ROUNDS", 8),
     toolTimeoutMs: intEnv("AI_TOOL_TIMEOUT_MS", 5_000),
     requestTimeoutMs: intEnv("AI_REQUEST_TIMEOUT_MS", 30_000),
     modelTimeoutMs: intEnv("AI_MODEL_TIMEOUT_MS", 20_000),

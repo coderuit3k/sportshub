@@ -34,7 +34,7 @@ import type { ChatModel, ModelMessage } from "./provider";
 import { ProviderError } from "./provider";
 import { buildSystemPrompt, PROMPT_VERSION, ANSWER_SCHEMA_VERSION } from "./prompts";
 import { loadAiConfig, type AiConfig } from "./config";
-import { todayDateISO } from "@/lib/time/tz";
+import { BUSINESS_TZ, fromWallTime, todayDateISO } from "@/lib/time/tz";
 import type { VenueCardData } from "./tools/shared";
 import type { EvidenceItem } from "./tools/review-evidence";
 import type { BookableOption } from "./tools/bookable-options";
@@ -303,6 +303,7 @@ function validateAndHydrate(
 function fallbackAnswer(conv: Conversation, reason: string): AssistantAnswer {
   const venues = [...conv.registry.venues.values()].slice(0, 5);
   const evidence = [...conv.registry.evidence.values()].slice(0, 4);
+  const options = [...conv.registry.options.values()].slice(0, 6);
   return {
     type: "limited_answer",
     message:
@@ -312,12 +313,31 @@ function fallbackAnswer(conv: Conversation, reason: string): AssistantAnswer {
     venues,
     comparison: null,
     evidence,
-    options: [],
+    options,
     handoff: null,
     warnings: [...new Set(conv.registry.warnings)],
     missingFields: [],
     appliedContext: conv.state,
   };
+}
+
+/** The next 14 Saigon calendar days with Vietnamese weekday names.
+ * Models reliably miscompute relative weekdays ("thứ Bảy này" off by
+ * one was observed live twice), so the conversion is given as a
+ * lookup table in the context message instead of left to arithmetic. */
+function upcomingDaysTable(now: Date): string {
+  const parts: string[] = [];
+  for (let i = 0; i < 14; i++) {
+    const probe = new Date(now.getTime() + i * 86_400_000);
+    const iso = probe.toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
+    const [y, m, d] = iso.split("-").map(Number);
+    const weekday = new Intl.DateTimeFormat("vi-VN", {
+      weekday: "long",
+      timeZone: BUSINESS_TZ,
+    }).format(fromWallTime(y, m, d, 12, 0, 0));
+    parts.push(`${iso} (${weekday})`);
+  }
+  return parts.join(", ");
 }
 
 /* ------------------------------ the turn ----------------------------- */
@@ -373,7 +393,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     { role: "system", content: buildSystemPrompt(now) },
     {
       role: "system",
-      content: `Ngữ cảnh hội thoại hiện tại (state): ${JSON.stringify(conv.state)}. Hôm nay: ${todayDateISO(now)}.`,
+      content: `Ngữ cảnh hội thoại hiện tại (state): ${JSON.stringify(conv.state)}. Hôm nay: ${todayDateISO(now)}. Bảng tra ngày (14 ngày tới, giờ ${BUSINESS_TZ}): ${upcomingDaysTable(now)}. Khi đổi ngày tương đối ("thứ Bảy này", "tối mai", "tuần sau"), TRA BẢNG này để lấy ngày YYYY-MM-DD, đừng tự tính.`,
     },
     ...conv.history.map((h) => ({ role: h.role, content: h.content }) as ModelMessage),
     { role: "user", content: args.userMessage },

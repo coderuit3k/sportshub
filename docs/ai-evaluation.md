@@ -6,9 +6,9 @@ stated next to every number.
 
 ## Test layers and results
 
-### 1. Unit / contract tests — 279/279 passing (whole repo suite)
+### 1. Unit / contract tests — 293/293 passing (whole repo suite)
 
-`npm test` → 26 files, **279 tests, 0 failures** (4 PostgreSQL tests
+`npm test` → 27 files, **293 tests, 0 failures** (4 PostgreSQL tests
 skip without `AI_TEST_PG_URL`). The 54 tests added for the assistant
 (`tests/ai/`):
 

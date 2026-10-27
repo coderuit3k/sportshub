@@ -30,7 +30,7 @@ Sanity checks before presenting:
 
 ```bash
 npm run typecheck
-npm test                              # expect 279 passing (4 PG tests skip without AI_TEST_PG_URL)
+npm test                              # expect 293 passing (4 PG tests skip without AI_TEST_PG_URL)
 npx tsx eval/ai/run-benchmark.ts      # expect 50/50 + no-write HELD
 npx tsx eval/ai/run-benchmark-real.ts # real Bedrock model: needs AWS credentials in env
 ```

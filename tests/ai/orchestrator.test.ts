@@ -61,7 +61,7 @@ describe("orchestrator", () => {
     expect(res.trace.toolCalls[0].input).toMatchObject({ sportSlug: "cau-long", district: "Thủ Đức" });
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
-    expect(res.trace.promptVersion).toContain("v4");
+    expect(res.trace.promptVersion).toContain("v5");
   });
 
   it("rejects a hallucinated evidence id and falls back to a limited answer built from verified data", async () => {
@@ -178,8 +178,7 @@ describe("orchestrator", () => {
     expect(res.answer.appliedContext.venueIds).toEqual([]);
   });
 
-  it("client-carried context rehydrates the conversation on a fresh instance (serverless)", async () => {
-    __resetConversations();
+  it("client-carried context rehydrates the conversation on a fresh instance (serverless)", async () => {    __resetConversations();
     const first = await runAssistantTurn({
       userMessage: "Tìm sân cầu lông ở Thủ Đức",
       model: scripted([
@@ -207,5 +206,25 @@ describe("orchestrator", () => {
     expect(second.conversationId).toBe(first.conversationId); // id survives the instance switch
     expect(second.answer.appliedContext.sportSlug).toBe("cau-long"); // slots rehydrated, not forgotten
     expect(second.answer.appliedContext.district).toBe("Thủ Đức");
+  });
+
+  it("the fallback answer keeps verified OPTIONS, and the context carries a date lookup table", async () => {
+    __resetConversations();
+    let sawDateTable = false;
+    const bad = J({ kind: "final", answer: { type: "venue_shortlist", message: "Sân này [ev:gr_fake].", venueIds: ["v_thuduc"], evidenceIds: ["gr_fake"], optionIds: [], handoffId: null, missingFields: [] } });
+    const model = scripted(
+      [
+        J({ kind: "tool_call", tool: "get_bookable_options", input: { venueId: "v_thuduc", date: SAT, durationHours: 1 } }),
+        bad, bad, bad,
+      ],
+      (messages) => {
+        if (messages.some((m) => m.content.includes("Bảng tra ngày"))) sawDateTable = true;
+      },
+    );
+    const res = await runAssistantTurn({ userMessage: "Xem lịch sân Thủ Đức", model, db, cfg: cfg({ maxModelRounds: 4 }) });
+    expect(sawDateTable).toBe(true);
+    expect(res.answer.type).toBe("limited_answer");
+    expect(res.trace.validation.fallbackUsed).toBe(true);
+    expect(res.answer.options.length).toBeGreaterThan(0); // verified options survive the fallback
   });
 });

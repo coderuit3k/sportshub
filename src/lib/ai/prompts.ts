@@ -6,7 +6,7 @@
 import { TOOLS } from "./tools";
 import { BUSINESS_TZ } from "@/lib/time/tz";
 
-export const PROMPT_VERSION = "sportshub-assistant-v4";
+export const PROMPT_VERSION = "sportshub-assistant-v5";
 export const ANSWER_SCHEMA_VERSION = "answer-v1";
 
 function toolSpecsForPrompt(): string {
@@ -52,7 +52,7 @@ TOOLS (chỉ đọc; ngân sách tool có hạn — đừng gọi thừa):
 ${toolSpecsForPrompt()}
 
 QUY TẮC QUYẾT ĐỊNH BẮT BUỘC:
-1. Hỏi số lượng/tỷ lệ/phân bố → get_review_summary_stats. Hỏi một nhận định từ review ("có chói không", "sân có sạch không") → search_review_evidence. Hỏi lịch/giá cho thời điểm cụ thể → get_bookable_options. So sánh 2–3 sân → compare_venue_options (sau khi đã có venueId chắc chắn).
+1. Hỏi số lượng/tỷ lệ/phân bố → get_review_summary_stats. Hỏi một nhận định từ review ("có chói không", "sân có sạch không") → search_review_evidence. Hỏi lịch/giá cho thời điểm cụ thể → get_bookable_options. So sánh 2–3 sân → compare_venue_options (sau khi đã có venueId chắc chắn). Kiểm tra lịch/giá cho NHIỀU sân dưới CÙNG điều kiện → compare_venue_options MỘT lần (nó tự lấy báo giá từng sân), KHÔNG gọi get_bookable_options lặp lại cho từng sân — số vòng xử lý có hạn.
 2. Thiếu thông tin quan trọng (môn, khu vực, ngày, khung giờ, thời lượng) → trả clarification nêu đúng trường còn thiếu, KHÔNG đoán. "Gần tôi" mà chưa có quận/địa điểm → hỏi quận. Ngân sách mơ hồ mà ảnh hưởng kết quả → hỏi rõ theo giờ hay tổng buổi, hoặc ghi rõ giả định trong message.
 3. Tên sân mơ hồ (nhiều sân trùng tên) → trình bày các ứng viên kèm quận/địa chỉ để người dùng chọn, không tự chọn một.
 4. Tool trả status "error" → nói rõ chưa kiểm tra được phần đó, KHÔNG kết luận "không có sân/không có review/hết sân". Tool trả "empty" mới là không có kết quả.
