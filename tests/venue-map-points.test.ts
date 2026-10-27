@@ -22,6 +22,8 @@ interface FakeVenue {
   familyFriendly: boolean;
   ratingAvg: number;
   ratingCount: number;
+  googleRating?: number | null;
+  googleRatingCount?: number | null;
   latitude: number | null;
   longitude: number | null;
   sports: Array<{ sport: { slug: string; name: string } }>;
@@ -73,7 +75,11 @@ function matchesWhere(v: FakeVenue, where: any): boolean {
   if (where.venueType && v.venueType !== where.venueType) return false;
   if (where.beginnerFriendly === true && !v.beginnerFriendly) return false;
   if (where.familyFriendly === true && !v.familyFriendly) return false;
-  if (where.ratingAvg?.gte != null && v.ratingAvg < where.ratingAvg.gte) return false;
+  // minRating is expressed by the builder as
+  // AND: [{ OR: [{ googleRating: { gte } }, { googleRating: null, ratingAvg: { gte } }] }]
+  // — it matches the EFFECTIVE rating (googleRating ?? ratingAvg).
+  const minRating = where.AND?.find((c: any) => c.OR)?.OR?.[0]?.googleRating?.gte;
+  if (minRating != null && (v.googleRating ?? v.ratingAvg) < minRating) return false;
   const sportSlug = where.sports?.some?.sport?.slug;
   if (sportSlug && !v.sports.some((s) => s.sport.slug === sportSlug)) return false;
   if (where.OR) {

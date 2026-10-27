@@ -90,6 +90,14 @@ model Venue {
   instantBooking  Boolean  @default(true)
   ratingAvg       Float    @default(0)
   ratingCount     Int      @default(0)
+  // Google Maps aggregate for harvested real venues (source = "google");
+  // null for sample/owner-created venues. Display prefers these over the
+  // in-app ratingAvg/ratingCount when present.
+  googleRating      Float?
+  googleRatingCount Int?
+  // Provenance: "sample" (fictional seed/catalog) | "google" (real venue
+  // imported from Google Maps data, prisma/real-catalog.ts) | "owner"
+  source          String   @default("sample")
   // Cancellation policy (snapshot source; copied onto each Booking)
   cancelFullBeforeHours     Int @default(12)
   cancelPartialBeforeHours  Int @default(4)
@@ -110,6 +118,7 @@ model Venue {
   sessions    SportsSession[]
   favorites   Favorite[]
   reviews     Review[]
+  googleReviews GoogleReview[]
 
   @@index([city, district])
   @@index([status])
@@ -326,6 +335,26 @@ model Review {
   comment   String
   isSeed    Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([venueId])
+}
+
+/**
+ * Individual reviews harvested from a venue's Google Maps listing
+ * (display-only mirror, shown in a separate "Đánh giá từ Google"
+ * section — never mixed into the in-app Review aggregates above).
+ * Rows are replaced wholesale by prisma/real-catalog.ts from
+ * prisma/real-reviews-data.ts, matched by venue slug.
+ */
+model GoogleReview {
+  id           String   @id @default(cuid())
+  venueId      String
+  venue        Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  authorName   String
+  rating       Int
+  text         String
+  relativeTime String // as shown on Google, e.g. "2 tháng trước"
+  createdAt    DateTime @default(now())
 
   @@index([venueId])
 }

@@ -243,6 +243,27 @@ export const SPORT_PRICE_RANGES: Record<SportSlug, [number, number]> = Object.fr
   Object.entries(SPORT_CONFIG).map(([slug, cfg]) => [slug, cfg.priceRange]),
 ) as Record<SportSlug, [number, number]>;
 
+/**
+ * Per-sport facility defaults (first surface, capacity, facility name,
+ * venue type) — exported for importers that create one default facility
+ * per sport without running the fictional generator (the real-venue
+ * importer, prisma/real-catalog.ts).
+ */
+export const SPORT_FACILITY_DEFAULTS: Record<
+  SportSlug,
+  { surface: string; capacity: number; facilityName: string; venueType: string }
+> = Object.fromEntries(
+  Object.entries(SPORT_CONFIG).map(([slug, cfg]) => [
+    slug,
+    {
+      surface: cfg.surfaces[0],
+      capacity: cfg.capacity,
+      facilityName: cfg.facilityName(0),
+      venueType: cfg.venueTypes[0],
+    },
+  ]),
+) as Record<SportSlug, { surface: string; capacity: number; facilityName: string; venueType: string }>;
+
 /* ------------------------------------------------------------------ */
 /* Catalog types                                                       */
 /* ------------------------------------------------------------------ */

@@ -36,7 +36,7 @@ export default async function HomePage() {
   const sessions = await getCachedHomeSessions(todayStart.toISOString());
   const toCard = (v: (typeof venues)[number]) => ({
     id: v.id, slug: v.slug, name: v.name, district: v.district, address: v.address,
-    ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly,
+    ratingAvg: v.ratingAvg, ratingCount: v.ratingCount, googleRating: v.googleRating, googleRatingCount: v.googleRatingCount, beginnerFriendly: v.beginnerFriendly, familyFriendly: v.familyFriendly,
     minPrice: v.minPrice, imageUrl: v.imageUrl,
     sports: v.sports, primarySportSlug: v.primarySportSlug, isFavorite: false,
     latitude: v.latitude, longitude: v.longitude,

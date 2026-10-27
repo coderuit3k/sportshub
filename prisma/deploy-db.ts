@@ -24,7 +24,18 @@
  *    has converged. If any venue fails or is still missing at the
  *    end, ensureVenueCatalog throws, this script exits 1 and the build
  *    fails — a partial catalog must never ship silently.
- * 6. Migrates the curated venue photos into Cloudflare R2
+ * 6. Replaces the fictional catalog with the REAL venue catalog
+ *    (prisma/real-catalog.ts — 119 Ho Chi Minh City venues harvested
+ *    from Google Maps, prisma/real-venues-data.ts): purges every
+ *    venue with source != "google" (FK-closure deletes, booking-
+ *    guarded — a venue with bookings blocks the step instead),
+ *    inserts the missing real venues with their Google rating
+ *    aggregates, and syncs the per-venue Google reviews from
+ *    prisma/real-reviews-data.ts. Idempotent: once the database holds
+ *    exactly the 119 google venues the swap is a no-op (the review
+ *    sync still runs). Throws — failing the build — unless the final
+ *    google-venue count is exactly 119.
+ * 7. Migrates the curated venue photos into Cloudflare R2
  *    (prisma/photo-migration.ts): downloads each venue's code-map
  *    photo once and stores its public R2 URL on the primary
  *    VenueImage row, so stored photos become the primary display
@@ -41,6 +52,7 @@
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
 import { ensureVenueCatalog } from "./catalog-store";
+import { ensureRealCatalog } from "./real-catalog";
 import { migrateVenuePhotosToStorage } from "./photo-migration";
 
 const prisma = new PrismaClient();
@@ -185,6 +197,12 @@ async function main(): Promise<void> {
   console.log(
     `[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present, ` +
       `${catalog.repaired} repaired, ${catalog.removed} retired removed, ${catalog.failed} failed`,
+  );
+  const realCatalog = await ensureRealCatalog(prisma);
+  console.log(
+    `[deploy-db] real venue catalog: ${realCatalog.purged} purged, +${realCatalog.inserted} inserted, ` +
+      `${realCatalog.skipped} already present, ${realCatalog.googleReviews} google reviews synced, ` +
+      `${realCatalog.finalGoogleVenues}/${realCatalog.expected} google venues`,
   );
   const photos = await migrateVenuePhotosToStorage(prisma);
   console.log(

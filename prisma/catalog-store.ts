@@ -58,7 +58,7 @@ export const CATALOG_OWNER_EMAIL = "owner@sportshub.local";
  * ~4 s. 60 s gives the same work ample headroom without letting a
  * genuinely stuck transaction hang the build.
  */
-const TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 };
+export const TX_OPTIONS = { maxWait: 15_000, timeout: 60_000 };
 
 type Db = PrismaClient;
 
@@ -75,7 +75,7 @@ async function getOrCreateCatalogOwner(prisma: Db) {
   });
 }
 
-async function getOrCreateSports(prisma: Db): Promise<Record<string, string>> {
+export async function getOrCreateSports(prisma: Db): Promise<Record<string, string>> {
   const ids: Record<string, string> = {};
   for (const s of SPORT_DEFS) {
     const sport = await prisma.sport.upsert({
@@ -191,9 +191,45 @@ interface RemovalOutcome {
 }
 
 /**
+ * Booking statuses that are terminal AND dead: the booking never
+ * consumed court time and never will — CANCELLED (called off),
+ * EXPIRED (a PENDING hold that lapsed), REJECTED (the owner refused
+ * it). COMPLETED is terminal too but NOT dead: the booking happened,
+ * so it remains a financial record and keeps blocking every removal
+ * path. Booking.status is a plain string column; the full value set
+ * is documented on the schema field (PENDING | CONFIRMED | REJECTED |
+ * CANCELLED | COMPLETED | EXPIRED — there is no REFUNDED booking
+ * status; refunds live on Payment).
+ */
+export const DEAD_BOOKING_STATUSES: readonly string[] = ["CANCELLED", "EXPIRED", "REJECTED"];
+
+export interface DeleteRetiredVenueOptions {
+  /**
+   * Opt-in for the fictional→real catalog purge in
+   * prisma/real-catalog.ts ONLY: also delete this venue's DEAD
+   * bookings (DEAD_BOOKING_STATUSES) — together with their status
+   * history and payments — inside the same transaction closure, and
+   * report how many were removed. Live bookings (PENDING, CONFIRMED,
+   * COMPLETED) are never deleted by this option: the caller pre-scans
+   * and refuses venues that have any, and a live booking that somehow
+   * slipped past the caller would still FK-fail the venue delete
+   * below. Default false — the owner-facing retired-venue removal
+   * (removeRemovedVenues) keeps treating EVERY booking, dead or
+   * alive, as untouchable.
+   */
+  purgeDeadBookings?: boolean;
+}
+
+export interface DeleteRetiredVenueResult {
+  /** Dead bookings deleted with the venue (0 unless the caller opted into purgeDeadBookings). */
+  deadBookingsRemoved: number;
+}
+
+/**
  * Delete ONE retired venue with the COMPLETE foreign-key closure of
  * the venue subtree, in dependency order, inside a single
- * transaction. Every referencing model is deleted EXPLICITLY — the
+ * transaction. (Exported for reuse by prisma/real-catalog.ts, whose
+ * fictional→real catalog purge needs exactly the same closure.) Every referencing model is deleted EXPLICITLY — the
  * pass never relies on a schema cascade alone (the 2026-10-26
  * production build failure: session participants were only covered
  * by the SessionParticipant→SportsSession cascade, so a session with
@@ -205,22 +241,57 @@ interface RemovalOutcome {
  *   BlockedTime → Facility and → Venue (both deleted explicitly)
  *   SessionParticipant → SportsSession (deleted explicitly, first)
  *   SportsSession → Venue (no cascade in schema; deleted explicitly)
- *   Review / Favorite / VenueSport / VenueAmenity / OperatingHour /
- *   VenueImage / VenueStaff → Venue (cascades; deleted explicitly)
+ *   Review / GoogleReview / Favorite / VenueSport / VenueAmenity /
+ *   OperatingHour / VenueImage / VenueStaff → Venue (cascades;
+ *   deleted explicitly)
  *   Facility → Venue (deleted explicitly)
  *   Booking → Venue and → Facility declare NO cascade: they are the
- *   guard's job (see removeRemovedVenues) and are never deleted here.
+ *   guard's job (see removeRemovedVenues) and are never deleted here
+ *   — EXCEPT when the caller passes `purgeDeadBookings` (the
+ *   real-catalog purge only), which deletes the venue's DEAD bookings
+ *   (DEAD_BOOKING_STATUSES) plus their BookingStatusHistory and
+ *   Payment rows explicitly, before the facility/venue deletes.
  *   Notification.relatedId / AuditLog.entityId / Review.bookingId /
  *   SportsSession.linkedBookingId / IdempotencyKey.resultId are plain
  *   strings with no FK — they cannot block a delete.
  */
-async function deleteRetiredVenue(prisma: Db, venueId: string): Promise<void> {
+export async function deleteRetiredVenue(
+  prisma: Db,
+  venueId: string,
+  options: DeleteRetiredVenueOptions = {},
+): Promise<DeleteRetiredVenueResult> {
+  let deadBookingsRemoved = 0;
   await prisma.$transaction(async (tx) => {
     const facilities = await tx.facility.findMany({
       where: { venueId },
       select: { id: true },
     });
     const facilityIds = facilities.map((f) => f.id);
+    if (options.purgeDeadBookings) {
+      // Dead bookings first: they FK-reference both the venue and a
+      // facility, so they (and their history/payments, deleted
+      // explicitly rather than cascade-reliant) must go before the
+      // facility and venue deletes below. The status filter is the
+      // whole point — a live booking never matches it, stays put, and
+      // FK-fails the venue delete as a backstop.
+      const deadBookings = await tx.booking.findMany({
+        where: {
+          status: { in: [...DEAD_BOOKING_STATUSES] },
+          OR: [
+            { venueId },
+            ...(facilityIds.length > 0 ? [{ facilityId: { in: facilityIds } }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+      if (deadBookings.length > 0) {
+        const deadBookingIds = deadBookings.map((b) => b.id);
+        await tx.bookingStatusHistory.deleteMany({ where: { bookingId: { in: deadBookingIds } } });
+        await tx.payment.deleteMany({ where: { bookingId: { in: deadBookingIds } } });
+        await tx.booking.deleteMany({ where: { id: { in: deadBookingIds } } });
+        deadBookingsRemoved = deadBookings.length;
+      }
+    }
     if (facilityIds.length > 0) {
       await tx.priceRule.deleteMany({ where: { facilityId: { in: facilityIds } } });
       await tx.blockedTime.deleteMany({ where: { facilityId: { in: facilityIds } } });
@@ -239,6 +310,7 @@ async function deleteRetiredVenue(prisma: Db, venueId: string): Promise<void> {
       await tx.sportsSession.deleteMany({ where: { venueId } });
     }
     await tx.review.deleteMany({ where: { venueId } });
+    await tx.googleReview.deleteMany({ where: { venueId } });
     await tx.favorite.deleteMany({ where: { venueId } });
     await tx.facility.deleteMany({ where: { venueId } });
     await tx.venueSport.deleteMany({ where: { venueId } });
@@ -248,6 +320,7 @@ async function deleteRetiredVenue(prisma: Db, venueId: string): Promise<void> {
     await tx.venueStaff.deleteMany({ where: { venueId } });
     await tx.venue.delete({ where: { id: venueId } });
   }, TX_OPTIONS);
+  return { deadBookingsRemoved };
 }
 
 /**

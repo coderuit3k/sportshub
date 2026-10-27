@@ -18,16 +18,30 @@ test("venues map view renders the Leaflet map with markers", async ({ page }) =>
 
   const map = page.locator(".leaflet-container");
   await expect(map).toBeVisible();
-  // The seeded catalogue has coordinates for every venue, so the map
-  // must carry markers (170 in the full unfiltered set).
+  // The seeded catalogue (119 real venues) has coordinates for every
+  // venue, so the map must carry one marker per venue.
   const markers = page.locator(".leaflet-marker-icon");
   await expect(markers.first()).toBeVisible();
+  await expect.poll(async () => markers.count(), { timeout: 30000 }).toBe(119);
   const count = await markers.count();
   console.log("map markers:", count);
-  expect(count).toBeGreaterThan(0);
 
   // Clicking a marker opens its popup with a link to the venue detail.
-  await markers.first().click();
+  // The real venues cluster tightly in the city centre, so the first
+  // marker in DOM order can sit underneath a neighbouring pin (which
+  // then intercepts the click) — walk the markers until one accepts
+  // the click.
+  let clicked = false;
+  const total = await markers.count();
+  for (let i = 0; i < total && !clicked; i++) {
+    try {
+      await markers.nth(i).click({ timeout: 2000 });
+      clicked = true;
+    } catch {
+      // Covered by a neighbouring pin — try the next marker.
+    }
+  }
+  expect(clicked).toBe(true);
   const popup = page.locator(".leaflet-popup-content");
   await expect(popup).toBeVisible();
   await expect(popup.locator('a[href^="/venues/"]')).toBeVisible();

@@ -88,9 +88,11 @@ export default function VenueMap({ points }: { points: VenueMapPoint[] }) {
           ? sportName((k) => tSports(k), point.primarySportSlug, point.sportName)
           : tCommon("sportFallback"),
       ratingLine: (point) =>
-        point.ratingAvg > 0
-          ? `★ ${point.ratingAvg.toFixed(1)} ${tCommon("reviewsCount", { count: point.ratingCount })}`
-          : tCommon("newVenue"),
+        point.googleRating != null
+          ? `★ ${point.googleRating.toFixed(1)} ${tCommon("reviewsCount", { count: point.googleRatingCount ?? 0 })} · ${tCommon("googleReviews")}`
+          : point.ratingAvg > 0
+            ? `★ ${point.ratingAvg.toFixed(1)} ${tCommon("reviewsCount", { count: point.ratingCount })}`
+            : tCommon("newVenue"),
       priceLine: (point) =>
         point.minPrice != null ? tCommon("priceFrom", { price: formatVND(point.minPrice, locale) }) : tCommon("priceOnRequest"),
       viewAndBook: tCommon("viewAndBook"),

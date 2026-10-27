@@ -89,7 +89,11 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
         <div>
           <h1 className="text-3xl font-extrabold">{venue.name}</h1>
           <p className="mt-1 flex items-center gap-1 text-slate-500"><MapPin className="h-4 w-4" /> {venue.address}, {venue.district}, {venue.city}</p>
-          <p className="mt-1 flex items-center gap-1"><Star className="h-4 w-4 fill-accent text-accent" /> <strong>{venue.ratingAvg.toFixed(1)}</strong> {tCommon("reviewsCount", { count: venue.ratingCount })}</p>
+          {venue.googleRating != null ? (
+            <p className="mt-1 flex items-center gap-1"><Star className="h-4 w-4 fill-accent text-accent" /> <strong>{venue.googleRating.toFixed(1)}</strong> {tCommon("reviewsCount", { count: venue.googleRatingCount ?? 0 })} <span className="chip shrink-0">{tCommon("googleReviews")}</span></p>
+          ) : (
+            <p className="mt-1 flex items-center gap-1"><Star className="h-4 w-4 fill-accent text-accent" /> <strong>{venue.ratingAvg.toFixed(1)}</strong> {tCommon("reviewsCount", { count: venue.ratingCount })}</p>
+          )}
           <div className="mt-2 flex flex-wrap gap-1">{venue.sports.map((s) => <span key={s.id} className="chip"><SportIcon slug={s.slug} />{sportLabel(s.slug, s.name)}</span>)}{venue.beginnerFriendly && <span className="chip">{t("beginner")}</span>}{venue.familyFriendly && <span className="chip">{t("family")}</span>}</div>
         </div>
         <section className="card p-5"><h2 className="mb-2 font-bold">{t("about")}</h2><p>{venue.description}</p>
@@ -157,6 +161,14 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
             <div key={r.id} className="border-b py-2 last:border-0"><p><strong>{r.userName}</strong> — {"★".repeat(r.rating)} {r.isSeed && <em className="text-xs text-slate-400">(seed)</em>}</p><p className="text-sm">{r.comment}</p></div>
           ))}
         </section>
+        {venue.googleReviews.length > 0 && (
+          <section className="card border-primary/30 bg-primary/5 p-5">
+            <h2 className="mb-3 font-bold">{t("googleReviewsHeading")}</h2>
+            {venue.googleReviews.map((r) => (
+              <div key={r.id} className="border-b py-2 last:border-0"><p><strong>{r.authorName}</strong> — {"★".repeat(r.rating)} <span className="text-xs text-slate-400">{r.relativeTime}</span></p><p className="text-sm">{r.text}</p></div>
+            ))}
+          </section>
+        )}
         {venue.sessions.length > 0 && (
           <section className="card p-5"><h2 className="mb-2 font-bold">{t("upcomingSessions")}</h2>
             {venue.sessions.map((s) => <p key={s.id} className="text-sm">{s.title} — {format.dateTime(new Date(s.startAt), DATE_TIME_OPTIONS)} <Link className="font-semibold text-primary" href="/community">{t("viewSession")}</Link></p>)}

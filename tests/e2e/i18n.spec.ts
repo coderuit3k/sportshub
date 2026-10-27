@@ -68,7 +68,7 @@ test("english /venues + venue detail render translated labels and real photos", 
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { name: /Explore & book venues/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Filters" })).toBeVisible();
-  await expect(page.getByText("(170 results)")).toBeVisible();
+  await expect(page.getByText("(119 results)")).toBeVisible();
 
   // Pixel-level guard (same bar as venue-images.spec.ts): the first
   // card's photo must actually paint, not just exist in the HTML.
@@ -81,7 +81,7 @@ test("english /venues + venue detail render translated labels and real photos", 
   const cardBox = await cardImg.evaluate((el: HTMLImageElement) => el.getBoundingClientRect().height);
   expect(cardBox).toBeGreaterThanOrEqual(100);
 
-  await page.goto("/venues/smash-arena-thu-duc");
+  await page.goto("/venues/san-cau-long-dong-ho");
   await expect(page.getByRole("heading", { name: "Transparent pricing" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Book — / })).toBeVisible();
   await expect(page.getByText("Verified venue")).toBeVisible();

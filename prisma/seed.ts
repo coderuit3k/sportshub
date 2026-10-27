@@ -1,15 +1,17 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { ensureVenueCatalog } from "./catalog-store";
+import { ensureRealCatalog } from "./real-catalog";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Seeding SportsHub (FICTIONAL dev data — all venues are fictional)...");
+  console.log("Seeding SportsHub (dev accounts + sports; venues converge to the REAL Google catalog at the end)...");
   // Clean (dev only, idempotent re-seed)
   await prisma.auditLog.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
+  await prisma.googleReview.deleteMany();
   await prisma.favorite.deleteMany();
   await prisma.sessionParticipant.deleteMany();
   await prisma.sportsSession.deleteMany();
@@ -144,7 +146,19 @@ async function main() {
   }
 
   await prisma.auditLog.create({ data: { actorId: admin.id, action: "SEED", entity: "System", details: "Seed dữ liệu hoàn tất" } });
-  console.log(`Seed done. Accounts: player/owner/admin @sportshub.local / Password123! — Venues: ${Object.keys(venueIds).length}`);
+
+  // Converge onto the REAL catalog (prisma/real-catalog.ts) — the same
+  // step production runs in prisma/deploy-db.ts, so a fresh local DB
+  // ends up with exactly the 119 real Google venues, same as prod. The
+  // fictional flagships/catalog venues created above (and the seed
+  // reviews/sessions attached to them) are purged by the step's
+  // FK-closure removal; the seed accounts and sports stay.
+  const realCatalog = await ensureRealCatalog(prisma);
+  console.log(
+    `Real catalog: ${realCatalog.purged} fictional purged, +${realCatalog.inserted} real inserted, ` +
+      `${realCatalog.googleReviews} google reviews — ${realCatalog.finalGoogleVenues}/${realCatalog.expected} venues`,
+  );
+  console.log(`Seed done. Accounts: player/owner/admin @sportshub.local / Password123! — Venues: ${realCatalog.finalGoogleVenues} real (Google)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });

@@ -41,6 +41,9 @@ export interface PublicVenueCard {
   address: string;
   ratingAvg: number;
   ratingCount: number;
+  /** Google Maps aggregate for real venues; null → cards show the in-app rating. */
+  googleRating: number | null;
+  googleRatingCount: number | null;
   beginnerFriendly: boolean;
   familyFriendly: boolean;
   minPrice: number | null;
@@ -95,7 +98,10 @@ export const getCachedFeaturedVenues = unstable_cache(
         facilities: { include: { priceRules: true } },
         images: { orderBy: { sortOrder: "asc" }, select: { url: true } },
       },
-      orderBy: { ratingAvg: "desc" },
+      // Featured = best Google rating first (real venues carry no
+      // in-app rating yet); in-app rating breaks ties / covers
+      // venues without a Google aggregate.
+      orderBy: [{ googleRating: { sort: "desc", nulls: "last" } }, { ratingAvg: "desc" }],
       take: 6,
     });
     return venues.map((v) => ({
@@ -106,6 +112,8 @@ export const getCachedFeaturedVenues = unstable_cache(
       address: v.address,
       ratingAvg: v.ratingAvg,
       ratingCount: v.ratingCount,
+      googleRating: v.googleRating,
+      googleRatingCount: v.googleRatingCount,
       beginnerFriendly: v.beginnerFriendly,
       familyFriendly: v.familyFriendly,
       minPrice: minPriceOf(v.facilities),
@@ -116,7 +124,7 @@ export const getCachedFeaturedVenues = unstable_cache(
       longitude: v.longitude,
     }));
   },
-  ["public:featured-venues:v2"],
+  ["public:featured-venues:v3"],
   { revalidate: 300, tags: [VENUES_TAG] },
 );
 
@@ -174,6 +182,9 @@ export interface VenueListItem {
   address: string;
   ratingAvg: number;
   ratingCount: number;
+  /** Google Maps aggregate for real venues; null → cards show the in-app rating. */
+  googleRating: number | null;
+  googleRatingCount: number | null;
   beginnerFriendly: boolean;
   familyFriendly: boolean;
   minPrice: number | null;
@@ -194,7 +205,23 @@ function venueWhereFromFilters(filters: VenueListFilters): Prisma.VenueWhereInpu
     ...(filters.type ? { venueType: filters.type } : {}),
     ...(filters.beginner ? { beginnerFriendly: true } : {}),
     ...(filters.family ? { familyFriendly: true } : {}),
-    ...(filters.minRating != null ? { ratingAvg: { gte: filters.minRating } } : {}),
+    // minRating matches the EFFECTIVE rating (googleRating ?? ratingAvg):
+    // real venues carry their aggregate on googleRating and keep
+    // ratingAvg = 0, so filtering ratingAvg alone would empty the list.
+    // The condition sits under AND (not a top-level OR) so it composes
+    // with the keyword OR below instead of being overwritten by it.
+    ...(filters.minRating != null
+      ? {
+          AND: [
+            {
+              OR: [
+                { googleRating: { gte: filters.minRating } },
+                { googleRating: null, ratingAvg: { gte: filters.minRating } },
+              ],
+            },
+          ],
+        }
+      : {}),
     ...(filters.sport ? { sports: { some: { sport: { slug: filters.sport } } } } : {}),
     ...(filters.q ? { OR: [{ name: { contains: filters.q } }, { district: { contains: filters.q } }, { address: { contains: filters.q } }] } : {}),
   };
@@ -232,6 +259,8 @@ export const getCachedVenueList = unstable_cache(
       address: v.address,
       ratingAvg: v.ratingAvg,
       ratingCount: v.ratingCount,
+      googleRating: v.googleRating,
+      googleRatingCount: v.googleRatingCount,
       beginnerFriendly: v.beginnerFriendly,
       familyFriendly: v.familyFriendly,
       minPrice,
@@ -240,7 +269,7 @@ export const getCachedVenueList = unstable_cache(
       imageUrl: storedPrimaryImageUrl(v.images),
     }));
   },
-  ["public:venue-list:v2"],
+  ["public:venue-list:v3"],
   { revalidate: 60, tags: [VENUES_TAG] },
 );
 
@@ -262,6 +291,9 @@ export interface VenueMapPoint {
   minPrice: number | null;
   ratingAvg: number;
   ratingCount: number;
+  /** Google Maps aggregate for real venues; null → popups show the in-app rating. */
+  googleRating: number | null;
+  googleRatingCount: number | null;
 }
 
 export const getCachedVenueMapPoints = unstable_cache(
@@ -288,9 +320,11 @@ export const getCachedVenueMapPoints = unstable_cache(
         minPrice,
         ratingAvg: v.ratingAvg,
         ratingCount: v.ratingCount,
+        googleRating: v.googleRating,
+        googleRatingCount: v.googleRatingCount,
       }));
   },
-  ["public:venue-map-points:v2"],
+  ["public:venue-map-points:v3"],
   { revalidate: 60, tags: [VENUES_TAG] },
 );
 
@@ -321,6 +355,9 @@ export interface VenueDetailData {
   city: string;
   ratingAvg: number;
   ratingCount: number;
+  /** Google Maps aggregate for real venues; null → header shows the in-app rating. */
+  googleRating: number | null;
+  googleRatingCount: number | null;
   beginnerFriendly: boolean;
   familyFriendly: boolean;
   instantBooking: boolean;
@@ -344,6 +381,9 @@ export interface VenueDetailData {
   }[];
   hours: { dayOfWeek: number; openTime: string; closeTime: string }[];
   reviews: { id: string; rating: number; comment: string; isSeed: boolean; userName: string }[];
+  /** Reviews mirrored from the venue's Google Maps listing (separate
+   * from the in-app reviews above; empty for non-Google venues). */
+  googleReviews: { id: string; authorName: string; rating: number; text: string; relativeTime: string }[];
   sessions: { id: string; title: string; /** ISO string (cache-safe). */ startAt: string }[];
 }
 
@@ -358,6 +398,7 @@ export const getCachedVenueDetail = unstable_cache(
         facilities: { include: { priceRules: true, sport: true } },
         hours: { orderBy: { dayOfWeek: "asc" } },
         reviews: { include: { user: true }, orderBy: { createdAt: "desc" }, take: 10 },
+        googleReviews: { orderBy: { createdAt: "asc" } },
         sessions: { where: { status: { in: ["OPEN", "FULL"] } }, include: { sport: true }, orderBy: { startAt: "asc" }, take: 3 },
       },
     });
@@ -372,6 +413,8 @@ export const getCachedVenueDetail = unstable_cache(
       city: venue.city,
       ratingAvg: venue.ratingAvg,
       ratingCount: venue.ratingCount,
+      googleRating: venue.googleRating,
+      googleRatingCount: venue.googleRatingCount,
       beginnerFriendly: venue.beginnerFriendly,
       familyFriendly: venue.familyFriendly,
       instantBooking: venue.instantBooking,
@@ -394,9 +437,10 @@ export const getCachedVenueDetail = unstable_cache(
       })),
       hours: venue.hours.map((h) => ({ dayOfWeek: h.dayOfWeek, openTime: h.openTime, closeTime: h.closeTime })),
       reviews: venue.reviews.map((r) => ({ id: r.id, rating: r.rating, comment: r.comment, isSeed: r.isSeed, userName: r.user.name })),
+      googleReviews: venue.googleReviews.map((r) => ({ id: r.id, authorName: r.authorName, rating: r.rating, text: r.text, relativeTime: r.relativeTime })),
       sessions: venue.sessions.map((s) => ({ id: s.id, title: s.title, startAt: s.startAt.toISOString() })),
     };
   },
-  ["public:venue-detail:v3"],
+  ["public:venue-detail:v4"],
   { revalidate: 300, tags: [VENUES_TAG] },
 );

@@ -11,6 +11,10 @@ export interface VenueCardSport { slug: string; name: string }
 export interface VenueCardData {
   id: string; slug: string; name: string; district: string; address: string;
   ratingAvg: number; ratingCount: number; beginnerFriendly: boolean; familyFriendly: boolean;
+  /** Google Maps aggregate (real venues): when non-null the card shows
+   * it — with the "Đánh giá Google" source label — instead of the
+   * in-app rating. */
+  googleRating?: number | null; googleRatingCount?: number | null;
   minPrice: number | null; sports: VenueCardSport[]; primarySportSlug?: string | null;
   /** Stored primary photo (Cloudflare R2); null/omitted → the code map decides. */
   imageUrl?: string | null;
@@ -46,11 +50,20 @@ export default function VenueCard({ v }: { v: VenueCardData }) {
         {v.distanceKm != null && (
           <p className="flex items-center gap-1 text-sm font-medium text-primary"><MapPin className="h-4 w-4" /> {t("distanceFromYou", { distance: formatDistance(v.distanceKm, locale) })}</p>
         )}
-        <p className="flex items-center gap-1 text-sm">
-          <Star className="h-4 w-4 fill-accent text-accent" />
-          <strong>{v.ratingAvg > 0 ? v.ratingAvg.toFixed(1) : t("newVenue")}</strong>
-          <span className="text-slate-500">{t("reviewsCount", { count: v.ratingCount })}</span>
-        </p>
+        {v.googleRating != null ? (
+          <p className="flex items-center gap-1 text-sm">
+            <Star className="h-4 w-4 fill-accent text-accent" />
+            <strong>{v.googleRating.toFixed(1)}</strong>
+            <span className="text-slate-500">{t("reviewsCount", { count: v.googleRatingCount ?? 0 })}</span>
+            <span className="chip shrink-0">{t("googleReviews")}</span>
+          </p>
+        ) : (
+          <p className="flex items-center gap-1 text-sm">
+            <Star className="h-4 w-4 fill-accent text-accent" />
+            <strong>{v.ratingAvg > 0 ? v.ratingAvg.toFixed(1) : t("newVenue")}</strong>
+            <span className="text-slate-500">{t("reviewsCount", { count: v.ratingCount })}</span>
+          </p>
+        )}
         <div className="flex flex-wrap gap-1">
           {v.beginnerFriendly && <span className="chip">{t("beginnerFriendly")}</span>}
           {v.familyFriendly && <span className="chip">{t("familyFriendly")}</span>}

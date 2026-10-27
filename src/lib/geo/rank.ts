@@ -2,7 +2,8 @@
  * Geolocation ranking for the homepage "Sân nổi bật" (featured venues).
  *
  * Ranking criteria, in strict priority order (owner's spec):
- *   1. star rating (ratingAvg, descending)
+ *   1. star rating (descending) — the Google Maps aggregate when the
+ *      venue has one (real venues), otherwise the in-app ratingAvg
  *   2. distance from the user's position (ascending; only when a position
  *      is known — venues without coordinates count as infinitely far)
  *   3. price (minPrice, ascending; venues without a price count as
@@ -14,9 +15,17 @@
 
 export interface RankableVenue {
   ratingAvg: number;
+  /** Google Maps aggregate (real venues); takes precedence over the
+   * in-app ratingAvg for ranking when present. */
+  googleRating?: number | null;
   minPrice: number | null;
   latitude: number | null;
   longitude: number | null;
+}
+
+/** The rating a venue is ranked/displayed by: Google first, in-app fallback. */
+export function effectiveRating(v: RankableVenue): number {
+  return v.googleRating ?? v.ratingAvg;
 }
 
 export interface UserPosition {
@@ -58,8 +67,10 @@ export function rankVenues<T extends RankableVenue>(
   return withDistance
     .map((v, index) => ({ v, index }))
     .sort((a, b) => {
-      // 1. rating, descending
-      if (b.v.ratingAvg !== a.v.ratingAvg) return b.v.ratingAvg - a.v.ratingAvg;
+      // 1. effective rating (Google ?? in-app), descending
+      const ra = effectiveRating(a.v);
+      const rb = effectiveRating(b.v);
+      if (rb !== ra) return rb - ra;
       // 2. distance, ascending (unknown distance = +Infinity)
       const da = a.v.distanceKm ?? Number.POSITIVE_INFINITY;
       const db = b.v.distanceKm ?? Number.POSITIVE_INFINITY;
