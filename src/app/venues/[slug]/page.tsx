@@ -10,7 +10,7 @@ import AmenityIcon from "@/components/AmenityIcon";
 import { formatVND, facilityMinPrice } from "@/lib/booking/logic";
 import { facilityImage } from "@/lib/venue-images";
 import { getCachedVenueDetail } from "@/lib/public-data";
-import { MapPin, Star, ShieldCheck, Navigation } from "lucide-react";
+import { MapPin, Star, Navigation } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getLocale, getTranslations } from "next-intl/server";
 import { amenityName, sportName } from "@/i18n/vocab";
@@ -84,7 +84,6 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
             emojiAlign="right"
             sizes="(max-width: 1024px) 100vw, 800px"
           />
-          <span className="absolute bottom-6 left-6 z-10 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-primary"><ShieldCheck className="mr-1 inline h-4 w-4" />{t("verified")}</span>
         </div>
         <div>
           <h1 className="text-3xl font-extrabold">{venue.name}</h1>

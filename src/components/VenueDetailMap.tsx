@@ -3,20 +3,16 @@
 import { useEffect, useRef } from "react";
 import type * as Leaflet from "leaflet";
 import "leaflet/dist/leaflet.css";
-// Leaflet's default marker artwork: the CSS-relative image URLs break
-// under a bundler, so hand the icon the emitted asset URLs explicitly.
-// These static imports live in this lazy chunk only (see
-// VenueDetailMapSection).
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
+import "./google-maps.css";
+import { GOOGLE_STYLE_TILE_ATTRIBUTION, GOOGLE_STYLE_TILE_URL, applyGoogleChrome, googlePinIcon } from "./google-maps-style";
 
 /**
- * Single-venue map for the detail page: plain Leaflet over OpenStreetMap
- * RASTER tiles — deliberately not the openstreetmap.org embed iframe,
- * whose current viewer is WebGL-based (MapLibre GL) and renders an error
- * box on machines without WebGL (e.g. RDP sessions). Raster tiles need
- * no WebGL. Scroll-wheel zoom is disabled so the map never traps page
+ * Single-venue map for the detail page: plain Leaflet over CARTO Voyager
+ * RASTER tiles (OpenStreetMap data styled to look like Google Maps) —
+ * deliberately not the openstreetmap.org embed iframe, whose current
+ * viewer is WebGL-based (MapLibre GL) and renders an error box on
+ * machines without WebGL (e.g. RDP sessions). Raster tiles need no
+ * WebGL. Scroll-wheel zoom is disabled so the map never traps page
  * scrolling; dragging and the +/- zoom buttons still work.
  */
 export default function VenueDetailMap({ latitude, longitude }: { latitude: number; longitude: number }) {
@@ -28,17 +24,14 @@ export default function VenueDetailMap({ latitude, longitude }: { latitude: numb
     (async () => {
       const L = (await import("leaflet")) as unknown as typeof Leaflet;
       if (cancelled || !containerRef.current) return;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: markerIcon2x.src,
-        iconUrl: markerIcon.src,
-        shadowUrl: markerShadow.src,
-      });
-      map = L.map(containerRef.current, { scrollWheelZoom: false }).setView([latitude, longitude], 15);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
+      map = L.map(containerRef.current, { scrollWheelZoom: false, zoomControl: false, attributionControl: false }).setView([latitude, longitude], 15);
+      applyGoogleChrome(L, map);
+      L.tileLayer(GOOGLE_STYLE_TILE_URL, {
+        attribution: GOOGLE_STYLE_TILE_ATTRIBUTION,
+        subdomains: "abcd",
+        maxZoom: 20,
       }).addTo(map);
-      L.marker([latitude, longitude]).addTo(map);
+      L.marker([latitude, longitude], { icon: googlePinIcon(L) }).addTo(map);
     })();
     return () => {
       cancelled = true;
