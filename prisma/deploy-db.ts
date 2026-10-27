@@ -13,18 +13,7 @@
  *    the old copy (venue names/addresses/descriptions, review comments,
  *    session descriptions, booking notifications). Exact-match replacements,
  *    only rows that actually change are updated — a no-op once scrubbed.
- * 5. Converges the venue catalog onto the generated catalog
- *    (prisma/venue-catalog.ts — 164 venues after the owner's
- *    2026-10-26 trim of 10 venues; public totals 30 / 27 / 27 / 30 /
- *    30 / 26 per sport): inserts only venues whose slug is missing,
- *    repairs incomplete rows left by interrupted runs, and deletes
- *    the owner-removed venues with their children (a removed venue
- *    with bookings blocks the step instead). NOT gated on user
- *    count — it runs on every build and is a no-op once the catalog
- *    has converged. If any venue fails or is still missing at the
- *    end, ensureVenueCatalog throws, this script exits 1 and the build
- *    fails — a partial catalog must never ship silently.
- * 6. Replaces the fictional catalog with the REAL venue catalog
+ * 5. Replaces the fictional catalog with the REAL venue catalog
  *    (prisma/real-catalog.ts — 119 Ho Chi Minh City venues harvested
  *    from Google Maps, prisma/real-venues-data.ts): purges every
  *    venue with source != "google" (FK-closure deletes, booking-
@@ -35,7 +24,7 @@
  *    exactly the 119 google venues the swap is a no-op (the review
  *    sync still runs). Throws — failing the build — unless the final
  *    google-venue count is exactly 119.
- * 7. Migrates the curated venue photos into Cloudflare R2
+ * 6. Migrates the curated venue photos into Cloudflare R2
  *    (prisma/photo-migration.ts): downloads each venue's code-map
  *    photo once and stores its public R2 URL on the primary
  *    VenueImage row, so stored photos become the primary display
@@ -51,7 +40,6 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
-import { ensureVenueCatalog } from "./catalog-store";
 import { ensureRealCatalog } from "./real-catalog";
 import { migrateVenuePhotosToStorage } from "./photo-migration";
 
@@ -193,11 +181,6 @@ async function main(): Promise<void> {
   await seedIfEmpty();
   await backfillVenueCoordinates();
   await scrubDemoWording();
-  const catalog = await ensureVenueCatalog(prisma);
-  console.log(
-    `[deploy-db] venue catalog: +${catalog.inserted} inserted, ${catalog.skipped} already present, ` +
-      `${catalog.repaired} repaired, ${catalog.removed} retired removed, ${catalog.failed} failed`,
-  );
   const realCatalog = await ensureRealCatalog(prisma);
   console.log(
     `[deploy-db] real venue catalog: ${realCatalog.purged} purged, +${realCatalog.inserted} inserted, ` +

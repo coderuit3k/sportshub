@@ -122,7 +122,7 @@
     "priceFrom": "Từ {price}/giờ",
     "priceOnRequest": "Liên hệ giá",
     "retry": "Thử lại",
-    "reviewsCount": "({count} đánh giá)",
+    "reviewsCount": "({count, number} đánh giá)",
     "sportFallback": "Thể thao",
     "viewAndBook": "Xem & đặt"
   },
@@ -254,7 +254,7 @@
     "facilityCapacity": "Sức chứa {count} người",
     "bookThisCourt": "Đặt sân này",
     "family": "Gia đình",
-    "googleReviewsHeading": "Đánh giá từ Google",
+    "googleReviewsHeading": "Đánh giá",
     "location": "Vị trí & chỉ đường",
     "loginToSave": "Đăng nhập để lưu yêu thích & đặt sân",
     "mapTitle": "Bản đồ vị trí {name}",
