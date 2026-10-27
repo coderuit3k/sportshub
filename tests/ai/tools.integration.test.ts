@@ -62,6 +62,21 @@ describe("search_venues", () => {
     expect(v.minReferenceHourlyPrice).toBe(80_000); // cheapest rule of f_thuduc
     expect(v.priceType).toBe("platform_reference");
   });
+
+  it("district falls back to the address (ward alias) when the district column is empty", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Thủ Đức", limit: 5 });
+    const ids = res.data!.venues.map((v) => v.venueId);
+    expect(ids).toContain("v_thuduc"); // matched on the district column
+    expect(ids).toContain("v_linhxuan"); // district "" — matched via "Linh Xuân" in the address
+    expect(ids).not.toContain("v_quan7");
+    // the fallback is disclosed, not silent
+    expect(res.warnings.join(" ")).toContain("khớp theo địa chỉ");
+  });
+
+  it("a ward name given as the district matches through the address text", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Linh Xuân", limit: 5 });
+    expect(res.data!.venues.map((v) => v.venueId)).toEqual(["v_linhxuan"]);
+  });
 });
 
 describe("get_venue_profile", () => {

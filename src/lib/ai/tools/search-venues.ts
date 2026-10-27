@@ -5,6 +5,13 @@
  * - Name/district matching is diacritic-insensitive (folded), so
  *   "cau long" finds "Cầu Lông"; multiple venues sharing a name are all
  *   returned with district+address for disambiguation.
+ * - District matching falls back to the ADDRESS when the district
+ *   column does not match: most imported venues carry an empty or
+ *   ward-level district (post-2025 addresses name the ward, not the
+ *   district), so a district query also matches the district text —
+ *   or a curated ward alias for the area — inside the address. Any
+ *   result that only matched via this fallback is disclosed with a
+ *   warning; it is a text match, not verified geography.
  * - Rating filters and ordering use the EFFECTIVE rating (Google
  *   aggregate first, in-app fallback) — the same helper as the site.
  * - maxReferenceHourlyPrice compares the venue's minimum reference
@@ -20,13 +27,39 @@
  */
 import { SearchVenuesInput, type SearchVenuesArgs } from "../schemas";
 import { errorEnvelope, okEnvelope, ToolErrorCode, type ToolContext, type ToolEnvelope } from "../types";
-import { foldedIncludes } from "../text";
+import { foldedIncludes, foldVi } from "../text";
 import { shapeVenueCard, VENUE_INCLUDE, type VenueCardData, type VenueRow } from "./shared";
 import { venueProvenance } from "../types";
 
 export interface SearchVenuesData {
   venues: (VenueCardData & { uncheckedConditions: string[] })[];
   totalMatched: number;
+}
+
+/**
+ * Ward tokens that belong to a colloquial district/area name, keyed by
+ * the FOLDED district query. Imported catalog addresses (post-2025
+ * two-tier administration) name wards, so "Thủ Đức" rarely appears
+ * literally even for venues inside the former Thủ Đức city. Tokens
+ * are only added when verified against real catalog addresses —
+ * extend deliberately, never guess geography.
+ * Verified 2026-10-27: Linh Xuân / Bình Trưng / An Khánh are wards of
+ * the former Thủ Đức city (ex-Quận 2 / Thủ Đức) appearing in catalog
+ * addresses of venues the district column leaves blank.
+ */
+const DISTRICT_ADDRESS_ALIASES: Record<string, string[]> = {
+  "thu duc": ["linh xuan", "an khanh", "binh trung"],
+};
+
+function districtColumnMatches(v: VenueRow, district: string): boolean {
+  return foldedIncludes(v.district, district);
+}
+
+function districtMatches(v: VenueRow, district: string): boolean {
+  if (districtColumnMatches(v, district)) return true;
+  if (foldedIncludes(v.address, district)) return true;
+  const aliases = DISTRICT_ADDRESS_ALIASES[foldVi(district)] ?? [];
+  return aliases.some((alias) => foldedIncludes(v.address, alias));
 }
 
 export async function searchVenues(
@@ -54,7 +87,12 @@ export async function searchVenues(
     let matched = rows;
 
     if (args.district) {
-      matched = matched.filter((v) => foldedIncludes(v.district, args.district!));
+      matched = matched.filter((v) => districtMatches(v, args.district!));
+      if (matched.some((v) => !districtColumnMatches(v, args.district!))) {
+        warnings.push(
+          "Một số sân được khớp theo địa chỉ (tên phường/khu vực trong địa chỉ) vì dữ liệu quận của sân nhập từ nguồn ngoài không đầy đủ — đây là khớp theo văn bản địa chỉ, chưa phải vị trí đã xác minh.",
+        );
+      }
     }
     if (args.query) {
       matched = matched.filter(

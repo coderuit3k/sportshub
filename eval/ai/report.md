@@ -1,6 +1,6 @@
 # AI assistant benchmark — run report
 
-Run at: 2026-10-27T15:17:13.706Z
+Run at: 2026-10-27T16:19:28.802Z
 Model: scripted (protocol replay) — measures tools/orchestration, NOT real-LLM quality
 Fixture: tests/ai/fixtures.ts (SQLite throwaway DB)
 
@@ -9,7 +9,7 @@ Fixture: tests/ai/fixtures.ts (SQLite throwaway DB)
 - Holdout split: 16/16
 - Stability (re-run agreement): 10/10
 - No-write invariant (bookings/payments unchanged): HELD
-- Orchestration latency p50 3ms / p95 11ms (local, scripted model, fixture DB — NOT production latency)
+- Orchestration latency p50 4ms / p95 13ms (local, scripted model, fixture DB — NOT production latency)
 
 | Case | Split | Category | Result |
 |---|---|---|---|

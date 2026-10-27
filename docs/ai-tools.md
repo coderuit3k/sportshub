@@ -21,6 +21,14 @@ model.
 Structured candidate search over public venues.
 - Diacritic-insensitive name/district matching (folded text) — same-
   named venues are all returned with district + address.
+- District matching falls back to the address when the district
+  column misses (most imported venues have an empty/ward-level
+  district): the district text — or a curated ward alias
+  (`DISTRICT_ADDRESS_ALIASES`, e.g. Thủ Đức → Linh Xuân / An Khánh /
+  Bình Trưng, tokens verified against catalog addresses) — is
+  matched inside the address, and any fallback-only match is
+  disclosed in `warnings` as an address-text match, not verified
+  geography.
 - Rating filter/sort use the effective rating (`googleRating ??
   ratingAvg`, the shared `effectiveRating` helper).
 - `maxReferenceHourlyPrice` compares the venue's MINIMUM reference

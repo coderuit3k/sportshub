@@ -14,6 +14,9 @@
  *   CONFIRMED booking Sat 18:00–19:00; BlockedTime Sat 20:00–21:00.
  * - v_quan7 "Sân Cầu Lông Minh Khai" (Quận 7) — SAME NAME, google
  *   4.2/300 (ambiguity fixture).
+ * - v_linhxuan "Sân Cầu Lông Linh Xuân" — google 4.0/80, district
+ *   column EMPTY and the area only in the address ("Linh Xuân", a
+ *   Thủ Đức ward): the district→address fallback fixture.
  * - v_owner "Sân Bóng Rổ Phú Thọ" (Quận 11) — source=owner, no Google
  *   aggregate, in-app 4.8/2 reviews; facility f_owner has NO price
  *   rules (price-unavailable fixture).
@@ -229,6 +232,28 @@ async function seedAiFixtures(db: PrismaClient): Promise<void> {
       { facilityId: "f_quan7", ruleType: "OFF_PEAK", pricePerHour: 70_000, startHour: 6, endHour: 17 },
       { facilityId: "f_quan7", ruleType: "PEAK", pricePerHour: 110_000, startHour: 17, endHour: 22 },
       { facilityId: "f_quan7", ruleType: "WEEKEND", pricePerHour: 90_000, isWeekend: true },
+    ],
+  });
+
+  /* --- v_linhxuan (district only in the address, as a ward) -------- */
+  await db.venue.create({
+    data: {
+      id: "v_linhxuan", slug: "linh-xuan", name: "Sân Cầu Lông Linh Xuân",
+      description: "Sân cầu lông ở phường Linh Xuân, TP. Thủ Đức", address: "158 Đường số 17, Linh Xuân, Hồ Chí Minh",
+      district: "",
+      status: "APPROVED", source: "google", googleRating: 4.0, googleRatingCount: 80,
+      ratingAvg: 0, ratingCount: 0, instantBooking: false, verified: true, ownerId: owner.id,
+    },
+  });
+  await db.venueSport.create({ data: { venueId: "v_linhxuan", sportId: badminton.id } });
+  await hours("v_linhxuan");
+  await db.facility.create({
+    data: { id: "f_linhxuan", venueId: "v_linhxuan", sportId: badminton.id, name: "Sân 1", surface: "Thảm", capacity: 4 },
+  });
+  await db.priceRule.createMany({
+    data: [
+      { facilityId: "f_linhxuan", ruleType: "OFF_PEAK", pricePerHour: 85_000, startHour: 6, endHour: 17 },
+      { facilityId: "f_linhxuan", ruleType: "WEEKEND", pricePerHour: 95_000, isWeekend: true },
     ],
   });
 
