@@ -29,6 +29,7 @@ import {
   type ToolEnvelope,
 } from "../types";
 import { getAvailability } from "@/services/bookings";
+import { resolveSportSlug } from "./shared";
 import { aggregateSlots, calculatePrice, type HourlySlot } from "@/lib/booking/logic";
 import { formatTimeHHMM } from "@/lib/time/tz";
 
@@ -79,6 +80,17 @@ export async function getBookableOptions(
     if (!venue) return errorEnvelope(ToolErrorCode.NotFound, "Venue not found");
     if (venue.status !== "APPROVED") {
       return errorEnvelope(ToolErrorCode.NotPublic, "Venue is not public");
+    }
+
+    if (args.sportSlug) {
+      const resolution = await resolveSportSlug(ctx.db, args.sportSlug);
+      if (!resolution.ok) {
+        return errorEnvelope(
+          ToolErrorCode.UnsupportedFilter,
+          `Unknown sportSlug "${args.sportSlug}". Valid sportSlug values: ${resolution.validSlugs.join(", ")}.`,
+        );
+      }
+      args.sportSlug = resolution.slug;
     }
 
     const facilities = await ctx.db.facility.findMany({

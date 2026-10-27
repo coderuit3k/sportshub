@@ -28,7 +28,7 @@
 import { SearchVenuesInput, type SearchVenuesArgs } from "../schemas";
 import { errorEnvelope, okEnvelope, ToolErrorCode, type ToolContext, type ToolEnvelope } from "../types";
 import { foldedIncludes, foldVi } from "../text";
-import { shapeVenueCard, VENUE_INCLUDE, type VenueCardData, type VenueRow } from "./shared";
+import { resolveSportSlug, shapeVenueCard, VENUE_INCLUDE, type VenueCardData, type VenueRow } from "./shared";
 import { venueProvenance } from "../types";
 
 export interface SearchVenuesData {
@@ -51,15 +51,33 @@ const DISTRICT_ADDRESS_ALIASES: Record<string, string[]> = {
   "thu duc": ["linh xuan", "an khanh", "binh trung"],
 };
 
+/**
+ * Folded forms of a district query to try: the query as given, plus a
+ * variant with an administrative prefix stripped ("Quận Thủ Đức" /
+ * "Thành phố Thủ Đức" / "TP. Thủ Đức" → "thu duc"). The stripped form
+ * is only used when it stays ≥3 chars, so numeric districts ("Quận 7"
+ * → "7") never degrade into a substring match on a single digit.
+ */
+function districtNeedles(district: string): string[] {
+  const folded = foldVi(district).trim().replace(/\s+/g, " ");
+  const needles = new Set<string>([folded]);
+  const stripped = folded.replace(/^(thanh pho|quan|tp)\.?\s+/, "");
+  if (stripped !== folded && stripped.length >= 3) needles.add(stripped);
+  return [...needles];
+}
+
 function districtColumnMatches(v: VenueRow, district: string): boolean {
-  return foldedIncludes(v.district, district);
+  return districtNeedles(district).some((n) => foldedIncludes(v.district, n));
 }
 
 function districtMatches(v: VenueRow, district: string): boolean {
   if (districtColumnMatches(v, district)) return true;
-  if (foldedIncludes(v.address, district)) return true;
-  const aliases = DISTRICT_ADDRESS_ALIASES[foldVi(district)] ?? [];
-  return aliases.some((alias) => foldedIncludes(v.address, alias));
+  for (const n of districtNeedles(district)) {
+    if (foldedIncludes(v.address, n)) return true;
+    const aliases = DISTRICT_ADDRESS_ALIASES[n] ?? [];
+    if (aliases.some((alias) => foldedIncludes(v.address, alias))) return true;
+  }
+  return false;
 }
 
 export async function searchVenues(
@@ -75,6 +93,16 @@ export async function searchVenues(
     return errorEnvelope(ToolErrorCode.BudgetExhausted, "Tool budget exhausted");
   }
   try {
+    if (args.sportSlug) {
+      const resolution = await resolveSportSlug(ctx.db, args.sportSlug);
+      if (!resolution.ok) {
+        return errorEnvelope(
+          ToolErrorCode.UnsupportedFilter,
+          `Unknown sportSlug "${args.sportSlug}". Valid sportSlug values: ${resolution.validSlugs.join(", ")}.`,
+        );
+      }
+      args.sportSlug = resolution.slug;
+    }
     const rows = (await ctx.db.venue.findMany({
       where: {
         status: "APPROVED",

@@ -6,6 +6,8 @@
 import { effectiveRating } from "@/lib/geo/rank";
 import { facilityMinPrice } from "@/lib/booking/logic";
 import { venueProvenance, type ProvenanceKind } from "../types";
+import { foldVi } from "../text";
+import type { PrismaClient } from "@prisma/client";
 
 export interface VenueRow {
   id: string;
@@ -111,3 +113,46 @@ export const VENUE_INCLUDE = {
   facilities: { include: { priceRules: true, sport: true } },
   amenities: true,
 } as const;
+
+/** English/variant sport names a model may produce → canonical slug.
+ * Canonical slugs themselves and folded Vietnamese names ("cau long"
+ * → cau-long) are resolved without this table; the table only covers
+ * names that folding cannot fix. */
+const SPORT_SLUG_ALIASES: Record<string, string> = {
+  badminton: "cau-long",
+  tennis: "quan-vot",
+  basketball: "bong-ro",
+  swimming: "boi-loi",
+  "swimming-pool": "boi-loi",
+  soccer: "bong-da-mini",
+  football: "bong-da-mini",
+  "mini-football": "bong-da-mini",
+  futsal: "bong-da-mini",
+};
+
+export type SportResolution =
+  | { ok: true; slug: string }
+  | { ok: false; validSlugs: string[] };
+
+/**
+ * Resolve a model-supplied sportSlug against the sports that actually
+ * exist. An unknown sport must NEVER degrade into a silent empty
+ * result (the model would report "no venues" for a sport the platform
+ * has): callers turn a failed resolution into an UNSUPPORTED_FILTER
+ * error listing the valid slugs, so the model can correct itself.
+ */
+export async function resolveSportSlug(
+  db: PrismaClient,
+  raw: string,
+): Promise<SportResolution> {
+  const sports = await db.sport.findMany({ select: { slug: true, name: true } });
+  const validSlugs = sports.map((s) => s.slug);
+  if (validSlugs.includes(raw)) return { ok: true, slug: raw };
+  const folded = foldVi(raw).trim().replace(/\s+/g, "-");
+  if (validSlugs.includes(folded)) return { ok: true, slug: folded };
+  const byName = sports.find((s) => foldVi(s.name).replace(/\s+/g, "-") === folded);
+  if (byName) return { ok: true, slug: byName.slug };
+  const alias = SPORT_SLUG_ALIASES[folded];
+  if (alias && validSlugs.includes(alias)) return { ok: true, slug: alias };
+  return { ok: false, validSlugs };
+}

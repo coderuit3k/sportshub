@@ -77,6 +77,26 @@ describe("search_venues", () => {
     const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Linh Xuân", limit: 5 });
     expect(res.data!.venues.map((v) => v.venueId)).toEqual(["v_linhxuan"]);
   });
+
+  it("an administrative prefix on the district still matches (Quận Thủ Đức)", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "cau-long", district: "Quận Thủ Đức", limit: 5 });
+    const ids = res.data!.venues.map((v) => v.venueId);
+    expect(ids).toContain("v_thuduc");
+    expect(ids).toContain("v_linhxuan");
+  });
+
+  it("an English sport name resolves to the canonical slug (badminton → cau-long)", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "badminton", district: "Thủ Đức", limit: 5 });
+    expect(res.status).toBe("ok");
+    expect(res.data!.venues.map((v) => v.venueId)).toContain("v_thuduc");
+  });
+
+  it("an unknown sport is an UNSUPPORTED_FILTER error, never a silent empty", async () => {
+    const res = await searchVenues(fixtureCtx(db), { sportSlug: "golf", limit: 5 });
+    expect(res.status).toBe("error");
+    expect(res.error!.code).toBe("UNSUPPORTED_FILTER");
+    expect(res.error!.message).toContain("cau-long");
+  });
 });
 
 describe("get_venue_profile", () => {
@@ -255,6 +275,15 @@ describe("get_bookable_options", () => {
     const yesterday = new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
     const res = await getBookableOptions(fixtureCtx(db), { venueId: "v_thuduc", date: yesterday, durationHours: 1 });
     expect(res.data!.options.every((o) => !o.slotAvailable)).toBe(true);
+  });
+
+  it("sportSlug resolves English names; an unknown sport errors instead of emptying", async () => {
+    const ok = await getBookableOptions(fixtureCtx(db), { venueId: "v_thuduc", date: SAT, durationHours: 1, sportSlug: "badminton" });
+    expect(ok.status).toBe("ok");
+    expect(ok.data!.options.length).toBeGreaterThan(0);
+    const bad = await getBookableOptions(fixtureCtx(db), { venueId: "v_thuduc", date: SAT, durationHours: 1, sportSlug: "golf" });
+    expect(bad.status).toBe("error");
+    expect(bad.error!.code).toBe("UNSUPPORTED_FILTER");
   });
 });
 
