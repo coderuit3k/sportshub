@@ -155,12 +155,6 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
             <li>{t("cancelNone", { hours: venue.cancelPartialBeforeHours })}</li>
           </ul>
         </section>
-        <section className="card p-5">
-          <h2 className="mb-3 font-bold">{t("reviewsHeading")}</h2>
-          {venue.reviews.length === 0 ? <p className="text-slate-500">{t("noReviews")}</p> : venue.reviews.map((r) => (
-            <div key={r.id} className="border-b py-2 last:border-0"><p><strong>{r.userName}</strong> — {"★".repeat(r.rating)} {r.isSeed && <em className="text-xs text-slate-400">(seed)</em>}</p><p className="text-sm">{r.comment}</p></div>
-          ))}
-        </section>
         {venue.googleReviews.length > 0 && (
           <section className="card border-primary/30 bg-primary/5 p-5">
             <h2 className="mb-3 font-bold">{t("googleReviewsHeading")}</h2>
