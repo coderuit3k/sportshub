@@ -19,6 +19,14 @@ import { runAssistantTurn, type AssistantAnswer } from "@/lib/ai/orchestrator";
 const schema = z.object({
   conversationId: z.string().uuid().optional(),
   message: z.string().trim().min(1).max(2000),
+  /** Client-carried conversation context (public search slots +
+   * history summaries). Re-validated server-side; lets a fresh
+   * serverless instance continue the conversation. */
+  state: z.record(z.unknown()).optional(),
+  history: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(2000) }))
+    .max(24)
+    .optional(),
 });
 
 function errorAnswer(message: string, warnings: string[] = []): AssistantAnswer {
@@ -78,6 +86,10 @@ export async function POST(req: Request) {
     model,
     db: prisma,
     cfg,
+    clientContext:
+      parsed.data.state || parsed.data.history
+        ? { state: parsed.data.state, history: parsed.data.history }
+        : undefined,
   });
   return NextResponse.json(result);
 }

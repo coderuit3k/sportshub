@@ -15,10 +15,15 @@
  * repair round the server falls back to a limited answer built from
  * verified data instead of emitting the invalid answer.
  *
- * Conversation state is process-local (documented limitation: on
- * serverless it is per-instance) and holds only public search context
- * — never user records. A conversation id alone grants access to that
- * context only; tools re-check venue visibility on every call.
+ * Conversation state lives server-side per instance AND round-trips
+ * through the client (appliedContext + history summaries), so a turn
+ * landing on a fresh serverless instance rehydrates from the
+ * client-carried context instead of forgetting the conversation. The
+ * tool-result registry is per-instance only: after an instance
+ * switch the model simply re-runs the read-only tools it needs. The
+ * context holds only public search context — never user records. A
+ * conversation id alone grants access to that context only; tools
+ * re-check venue visibility on every call.
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -77,7 +82,25 @@ const conversations = new Map<string, Conversation>();
 const CONVERSATION_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_CONVERSATIONS = 500;
 
-function getOrCreateConversation(id: string | undefined): Conversation {
+/**
+ * Conversation context the CLIENT carries between turns and returns
+ * with each request. Server instances are ephemeral (serverless), so
+ * the in-process map is only a cache: when an instance does not know
+ * the conversation, it rehydrates state + history from this payload.
+ * The payload is public search context only (sport/district/date/…),
+ * re-validated with the ConversationState schema — never user
+ * records — and every tool re-checks visibility anyway, so a forged
+ * payload can only distort the caller's own search context.
+ */
+export interface ClientConversationContext {
+  state?: unknown;
+  history?: { role: "user" | "assistant"; content: string }[];
+}
+
+function getOrCreateConversation(
+  id: string | undefined,
+  clientContext?: ClientConversationContext,
+): Conversation {
   const nowMs = Date.now();
   for (const [key, c] of conversations) {
     if (nowMs - c.updatedAt > CONVERSATION_TTL_MS) conversations.delete(key);
@@ -91,10 +114,22 @@ function getOrCreateConversation(id: string | undefined): Conversation {
     const oldest = [...conversations.values()].sort((a, b) => a.updatedAt - b.updatedAt)[0];
     if (oldest) conversations.delete(oldest.id);
   }
+  const parsedState = clientContext?.state
+    ? ConversationState.safeParse(clientContext.state)
+    : null;
+  const history = (clientContext?.history ?? [])
+    .filter(
+      (h): h is { role: "user" | "assistant"; content: string } =>
+        !!h && (h.role === "user" || h.role === "assistant") && typeof h.content === "string",
+    )
+    .slice(-24)
+    .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
   const c: Conversation = {
-    id: randomUUID(),
-    state: ConversationState.parse({}),
-    history: [],
+    // A client-carried conversation keeps its id across instances;
+    // without client context an unknown id still starts fully fresh.
+    id: clientContext && id ? id : randomUUID(),
+    state: parsedState?.success ? parsedState.data : ConversationState.parse({}),
+    history,
     registry: { venues: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, warnings: [] },
     updatedAt: nowMs,
   };
@@ -294,6 +329,9 @@ export interface RunTurnArgs {
   db: PrismaClient;
   now?: Date;
   cfg?: AiConfig;
+  /** Client-carried context for rehydrating the conversation on an
+   * instance that has never seen it (see ClientConversationContext). */
+  clientContext?: ClientConversationContext;
 }
 
 export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurnResult> {
@@ -301,7 +339,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   const now = args.now ?? new Date();
   const startedAtMs = Date.now();
   const traceId = randomUUID();
-  const conv = getOrCreateConversation(args.conversationId);
+  const conv = getOrCreateConversation(args.conversationId, args.clientContext);
   const budget = new BudgetCounter(cfg.maxToolExecutions);
   const toolCtxBase = { db: args.db, now, timeoutMs: cfg.toolTimeoutMs };
 

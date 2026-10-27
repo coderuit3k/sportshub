@@ -31,6 +31,18 @@ export default function AssistantChat({ available }: { available: boolean }) {
   const [statusIdx, setStatusIdx] = useState(0);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Conversation context carried by the client and returned with
+   * every request: server instances are ephemeral (serverless), so
+   * this is what lets a fresh instance continue the conversation
+   * instead of forgetting the slots already collected. It mirrors
+   * exactly what the server puts in `appliedContext` + the
+   * user/assistant summaries the server itself keeps.
+   */
+  const contextRef = useRef<{
+    state: AssistantAnswer["appliedContext"] | null;
+    history: { role: "user" | "assistant"; content: string }[];
+  }>({ state: null, history: [] });
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -53,10 +65,26 @@ export default function AssistantChat({ available }: { available: boolean }) {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, message }),
+        body: JSON.stringify({
+          conversationId,
+          message,
+          ...(contextRef.current.state
+            ? { state: contextRef.current.state, history: contextRef.current.history }
+            : {}),
+        }),
       });
       const json = (await res.json()) as { conversationId?: string; answer?: AssistantAnswer };
       if (json.conversationId) setConversationId(json.conversationId);
+      if (res.ok && json.answer) {
+        contextRef.current = {
+          state: json.answer.appliedContext,
+          history: [
+            ...contextRef.current.history,
+            { role: "user" as const, content: message.slice(0, 2000) },
+            { role: "assistant" as const, content: `[${json.answer.type}] ${json.answer.message}`.slice(0, 2000) },
+          ].slice(-24),
+        };
+      }
       const answer: AssistantAnswer =
         json.answer ??
         ({

@@ -132,10 +132,16 @@ contain no user records, no precise location, no secrets.
 
 ## Known limitations
 
-- Conversation state is process-local (per server instance) with a
-  2h TTL — on multi-instance serverless, turns of one conversation
-  can land on different instances and lose slots. Acceptable for the
-  demo; a shared store is the follow-up if the assistant graduates.
+- Conversation state round-trips through the client: the server
+  map is a per-instance cache, and each request also carries the
+  last `appliedContext` + history summaries, which a fresh instance
+  re-validates (ConversationState schema) and rehydrates — a turn
+  landing on another serverless instance no longer forgets the
+  conversation (verified live on Vercel, where instance switches
+  previously reset multi-turn flows). The tool-result registry is
+  still per-instance: after a switch the model re-runs the read-only
+  tools it needs within the new turn's budget. The carried payload
+  is public search context only; tools re-check everything.
 - Review retrieval is lexical (clause + keyword), labelled as such;
   aspect/sentiment come from a versioned keyword taxonomy
   (`aspect-lex-v1`), not a learned model. No embeddings until a

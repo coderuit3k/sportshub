@@ -177,4 +177,35 @@ describe("orchestrator", () => {
     expect(res.conversationId).not.toBe("123e4567-e89b-12d3-a456-426614174000");
     expect(res.answer.appliedContext.venueIds).toEqual([]);
   });
+
+  it("client-carried context rehydrates the conversation on a fresh instance (serverless)", async () => {
+    __resetConversations();
+    const first = await runAssistantTurn({
+      userMessage: "Tìm sân cầu lông ở Thủ Đức",
+      model: scripted([
+        J({ kind: "final", statePatch: { sportSlug: "cau-long", district: "Thủ Đức" }, answer: { type: "clarification", message: "Bạn muốn chơi ngày nào?", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: ["dateISO"] } }),
+      ]),
+      db, cfg: cfg(),
+    });
+    const carried = {
+      state: first.answer.appliedContext,
+      history: [
+        { role: "user" as const, content: "Tìm sân cầu lông ở Thủ Đức" },
+        { role: "assistant" as const, content: "[clarification] Bạn muốn chơi ngày nào?" },
+      ],
+    };
+    __resetConversations(); // simulate landing on a different instance
+    const second = await runAssistantTurn({
+      conversationId: first.conversationId,
+      userMessage: "Thứ Bảy này, 18 giờ",
+      model: scripted([
+        J({ kind: "final", answer: { type: "clarification", message: "Chơi mấy tiếng?", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: ["durationHours"] } }),
+      ]),
+      db, cfg: cfg(),
+      clientContext: carried,
+    });
+    expect(second.conversationId).toBe(first.conversationId); // id survives the instance switch
+    expect(second.answer.appliedContext.sportSlug).toBe("cau-long"); // slots rehydrated, not forgotten
+    expect(second.answer.appliedContext.district).toBe("Thủ Đức");
+  });
 });
