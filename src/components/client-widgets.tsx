@@ -129,6 +129,15 @@ export function BookingWidget({ facilities, venueName, initialDate }: { faciliti
     setBusy(false);
     if (!r.ok) { setMsg(j.error ?? t("failed")); return; }
     setMsg(t("success", { reference: j.booking?.reference ?? "", status: statusLabel(j.booking?.status) }));
+    // The just-booked slot (and every start overlapping it) must lock right
+    // away in this same session: drop the cached availability for this
+    // facility/date so the effect refetches, and clear the selection.
+    setSlot(null);
+    setSlotCache((c) => {
+      const next = { ...c };
+      delete next[cacheKey];
+      return next;
+    });
   }
   return (
     <div className="card p-5">
