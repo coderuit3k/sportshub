@@ -158,9 +158,31 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
         {venue.googleReviews.length > 0 && (
           <section className="card border-primary/30 bg-primary/5 p-5">
             <h2 className="mb-3 font-bold">{t("googleReviewsHeading")}</h2>
-            {venue.googleReviews.map((r) => (
-              <div key={r.id} className="border-b py-2 last:border-0"><p><strong>{r.authorName}</strong> — {"★".repeat(r.rating)} <span className="text-xs text-slate-400">{r.relativeTime}</span></p><p className="text-sm">{r.text}</p></div>
-            ))}
+            <div className="space-y-3">
+              {venue.googleReviews.map((r) => {
+                const nameParts = r.authorName.trim().split(/\s+/).filter(Boolean);
+                const initials = ((nameParts[0]?.[0] ?? "") + (nameParts.length > 1 ? nameParts[nameParts.length - 1][0] : "")).toUpperCase();
+                return (
+                  <article key={r.id} className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary" aria-hidden="true">{initials}</div>
+                      <div className="min-w-0">
+                        <p className="font-semibold leading-tight text-slate-900">{r.authorName}</p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="flex items-center gap-0.5" role="img" aria-label={`${r.rating}/5`}>
+                            {Array.from({ length: 5 }, (_, i) => (
+                              <Star key={i} className={i < r.rating ? "h-3.5 w-3.5 fill-accent text-accent" : "h-3.5 w-3.5 fill-slate-200 text-slate-200"} />
+                            ))}
+                          </span>
+                          <span className="text-xs text-slate-400">{r.relativeTime}</span>
+                        </p>
+                        <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{r.text}</p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
         )}
         {venue.sessions.length > 0 && (
