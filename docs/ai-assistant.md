@@ -88,7 +88,10 @@ repeated in tool warnings and UI labels).
   stats guard rejects digit-bearing answers to review-count
   questions until the stats tool has succeeded in that turn), and a
   failed booking handoff must be retried once after fetching the
-  venue profile for the correct facilityId.
+  venue profile for the correct facilityId. The orchestrator also
+  auto-fills a shortlist's option references from this turn's
+  compare/bookable results when the model forgets to reference
+  them, so verified options always reach the UI.
 - Missing sport/area/date/time/duration → clarification naming the
   missing fields; "near me" without a district → ask for the district
   (browser geolocation is never sent to the server or the model).

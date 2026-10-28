@@ -6,9 +6,9 @@ Conditions are stated next to every number.
 
 ## Test layers and results
 
-### 1. Unit / contract tests — 297/297 passing (whole repo suite)
+### 1. Unit / contract tests — 298/298 passing (whole repo suite)
 
-`npm test` → 28 files, **297 tests, 0 failures** (10 PostgreSQL
+`npm test` → 28 files, **298 tests, 0 failures** (10 PostgreSQL
 tests skip without a PG URL: 4 AI + 6 geo). The tests added for the
 assistant (`tests/ai/`):
 
@@ -134,9 +134,14 @@ The three PARTIALs were all acted on the same day (prompt
   "quan N" needle and verified District 7 ward aliases (Tân Hưng,
   Phú Thuận, Phú Mỹ Hưng) were added to the address fallback.
 
-Post-fix regression: suite 297/297, scripted benchmark 50/50.
-Post-fix live re-probe of cases 2, 5 and 6 is recorded in the live
-report file above.
+Post-fix regression: suite 298/298, scripted benchmark 50/50.
+Post-fix live re-probe: cases 2, 5 and 6 all pass after the fixes
+(handoff recovery executed as prescribed; stats answered from the
+tool with correct 2-of-8 figures and scope; District 7 returns
+exactly its two genuine tennis venues), and a fourth fix (server
+auto-fill of shortlist options the model forgot to reference) was
+added for case 1's intermittent empty options array. Details in
+the live report file above.
 
 ## Release gates (proposed §12) — status
 

@@ -130,6 +130,21 @@ describe("orchestrator", () => {
     expect(res.trace.evidenceRoundsUsed).toBe(0);
   });
 
+  it("auto-fills shortlist options the model forgot to reference (shortlist auto-fill)", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", district: "Thủ Đức", limit: 3 } }),
+      J({ kind: "tool_call", tool: "get_bookable_options", input: { venueId: "v_thuduc", date: SAT, durationHours: 1, window: { from: "17:00", to: "19:00" } }, statePatch: { dateISO: SAT, startTime: "17:00" } }),
+      // Model quotes the slot in prose but references NO optionIds.
+      J({ kind: "final", answer: { type: "venue_shortlist", message: "Sân còn trống lúc 17:00, giá đã rõ trong thẻ.", venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Thứ Bảy này sân Minh Khai Thủ Đức còn giờ nào từ 17:00, chơi 1 tiếng?", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.answer.options.length).toBeGreaterThan(0);
+    expect(res.answer.options.every((o) => o.venueId === "v_thuduc")).toBe(true);
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
   it("rejects review counts stated without a successful stats call (stats guard)", async () => {
     __resetConversations();
     let sawGuard = false;

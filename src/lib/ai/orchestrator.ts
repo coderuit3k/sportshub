@@ -404,6 +404,10 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   let evidenceExecutions = 0;
   let repaired = false;
   const deadline = startedAtMs + cfg.requestTimeoutMs;
+  // Snapshot of registry options from EARLIER turns: the shortlist
+  // auto-fill below may only use options produced by THIS turn's
+  // compare/bookable calls, never stale slots from a previous turn.
+  const optionsBeforeTurn = new Set(conv.registry.options.keys());
 
   for (let round = 0; round < cfg.maxModelRounds; round++) {
     if (Date.now() > deadline) {
@@ -461,6 +465,36 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
         });
         repaired = true;
         continue;
+      }
+      // Shortlist auto-fill (live-eval 2026-10-28, case 1): the model
+      // intermittently finalizes a venue_shortlist with optionIds []
+      // even though compare/bookable succeeded in the same turn and
+      // the message text quotes the prices — the UI then renders no
+      // option cards. The registry holds the real options, so the
+      // server fills the ids itself (this turn's options only,
+      // restricted to the answer's venues and, when known, the
+      // state's date/startTime) instead of spending a repair round.
+      if (
+        reply.answer.type === "venue_shortlist" &&
+        (reply.answer.optionIds ?? []).length === 0 &&
+        trace.toolCalls.some(
+          (c) =>
+            (c.tool === "compare_venue_options" || c.tool === "get_bookable_options") &&
+            c.status === "ok",
+        )
+      ) {
+        let fresh = [...conv.registry.options.values()].filter((o) => !optionsBeforeTurn.has(o.optionId));
+        if (reply.answer.venueIds.length > 0) fresh = fresh.filter((o) => reply.answer.venueIds.includes(o.venueId));
+        if (conv.state.dateISO) {
+          const sameDay = fresh.filter((o) => o.date === conv.state.dateISO);
+          if (sameDay.length > 0) fresh = sameDay;
+        }
+        if (conv.state.startTime) {
+          const sameStart = fresh.filter((o) => o.startTime === conv.state.startTime);
+          if (sameStart.length > 0) fresh = sameStart;
+        }
+        fresh.sort((a, b) => a.startAt.localeCompare(b.startAt) || (a.totalPrice ?? Number.MAX_SAFE_INTEGER) - (b.totalPrice ?? Number.MAX_SAFE_INTEGER));
+        if (fresh.length > 0) reply.answer.optionIds = fresh.slice(0, 6).map((o) => o.optionId);
       }
       const check = validateAndHydrate(conv, reply.answer);
       if (check.ok) {
