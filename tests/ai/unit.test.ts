@@ -86,6 +86,21 @@ describe("districtMatches (search_venues district resolution)", () => {
     expect(districtMatches(tanTruong, "Thủ Đức")).toBe(false);
     expect(districtMatches(row("Quận 7", "7 Đ. Số 23, Quận 7, Hồ Chí Minh"), "District 7")).toBe(true);
   });
+
+  it("a bare numeric district never substring-matches postcodes or street numbers", async () => {
+    const { districtMatches } = await import("@/lib/ai/tools/search-venues");
+    // Real catalog row: Tân Bình venue whose address postcode 700000
+    // contains the digit 7 — it leaked into District 7 results in a
+    // live probe before this guard existed.
+    const tanBinh = row("Bảy Hiền", "18D Cộng Hòa, Bảy Hiền, Hồ Chí Minh 700000, Việt Nam");
+    expect(districtMatches(tanBinh, "7")).toBe(false);
+    expect(districtMatches(tanBinh, "District 7")).toBe(false);
+    // …while the genuine District 7 rows still match the bare form.
+    for (const v of [vietPhoQ7, tanTruong, skyGarden]) {
+      expect(districtMatches(v, "7")).toBe(true);
+      expect(districtMatches(v, "Q7")).toBe(true);
+    }
+  });
 });
 
 describe("BudgetCounter", () => {

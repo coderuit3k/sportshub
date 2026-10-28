@@ -1,6 +1,6 @@
 # AI assistant benchmark — run report
 
-Run at: 2026-10-28T05:08:02.281Z
+Run at: 2026-10-28T06:05:59.100Z
 Model: scripted (protocol replay) — measures tools/orchestration, NOT real-LLM quality
 Fixture: tests/ai/fixtures.ts (SQLite throwaway DB)
 

@@ -68,6 +68,13 @@ const DISTRICT_ADDRESS_ALIASES: Record<string, string[]> = {
  */
 function districtNeedles(district: string): string[] {
   const folded = foldVi(district).trim().replace(/\s+/g, " ");
+  // Bare numeric ("7") or shorthand ("Q7", "Q.7") district: the ONLY
+  // safe needle is the full "quan 7" form. A raw "7" needle substring-
+  // matches any address containing the digit (postcodes like 700000,
+  // street numbers) — live probe 2026-10-28: a Tân Bình venue leaked
+  // into District 7 results through its "700000" postcode.
+  const numeric = folded.match(/^\d+$/) ?? folded.match(/^q\.?\s*(\d+)$/);
+  if (numeric) return [`quan ${numeric[1] ?? numeric[0]}`];
   const needles = new Set<string>([folded]);
   const stripped = folded.replace(/^(thanh pho|quan|tp)\.?\s+/, "");
   if (stripped !== folded && stripped.length >= 3) needles.add(stripped);
