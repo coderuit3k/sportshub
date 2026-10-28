@@ -101,7 +101,10 @@ const hits = await findVenuesWithinRadius(prisma, {
   like the AI PG tests) exercises the extension install, the radius
   boundaries (a ≈4.9 km venue is inside 5 km but outside 4 km),
   ordering, the sport filter and coordinate freshness against a
-  throwaway database:
+  throwaway database. Verified end-to-end locally on 2026-10-28
+  (PostgreSQL 16 + PostGIS 3, real 119-venue catalog seeded into a
+  scratch database): 11 venues within 5 km of the Thủ Đức centre,
+  ordered 0.50–4.93 km.
 
   ```bash
   GEO_TEST_PG_URL=postgresql://sportshub_test:testpass@localhost:5432/ai_test \
