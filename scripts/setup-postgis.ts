@@ -14,6 +14,15 @@
 import { PrismaClient } from "@prisma/client";
 import { ensurePostgis } from "../prisma/postgis";
 
+// Load .env like the Prisma CLI does, so DATABASE_URL can live only
+// in the file (previously this script required it exported in the
+// shell and failed with a misleading message when it was not).
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file — rely on the real environment.
+}
+
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL ?? "";
   if (!url.startsWith("postgres")) {

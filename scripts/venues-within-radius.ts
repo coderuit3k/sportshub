@@ -13,6 +13,13 @@
 import { PrismaClient } from "@prisma/client";
 import { findVenuesWithinRadius } from "../src/lib/geo/radius";
 
+// Load .env like the Prisma CLI does (see scripts/setup-postgis.ts).
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file — rely on the real environment.
+}
+
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : undefined;
