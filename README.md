@@ -2,7 +2,8 @@
 
 Discover, book and play: real sports venues across Ho Chi Minh City with live
 availability, server-side pricing, community match sessions ("Play Together"),
-and owner/admin consoles.
+owner/admin consoles, and a conversational AI assistant that searches venues,
+explains reviews, checks schedules and prepares bookings.
 
 **Live:** https://sportshub-pi-five.vercel.app
 
@@ -15,13 +16,17 @@ and owner/admin consoles.
 ## Stack
 
 - Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind CSS 3
-- Prisma ORM — **SQLite for local dev**, **PostgreSQL in production**
-  (`prisma/schema.postgresql.prisma`, hosted on Neon, Singapore region)
+- Prisma ORM **6.19.3 (pinned exactly)** — SQLite for local dev, PostgreSQL
+  in production (`prisma/schema.postgresql.prisma`, hosted on Neon,
+  Singapore region). The pin matters: Prisma 7's CLI rejects this schema's
+  datasource syntax, so do not "upgrade" the CLI casually.
 - Auth: bcryptjs + `jose` JWT in an httpOnly cookie. RBAC: `PLAYER` / `OWNER` / `ADMIN`
 - Maps: Leaflet over OpenStreetMap raster tiles (no API key, no WebGL)
 - Venue photo storage: Cloudflare R2 (S3-compatible, presigned uploads)
 - Rate limiting: Upstash Redis (Vercel KV) with a per-instance in-memory fallback
-- i18n: next-intl — Vietnamese (default) + English, persisted by cookie, URLs unchanged
+- AI: Amazon Bedrock (Claude Haiku 4.5) via the Converse API; an
+  OpenAI-compatible provider is available by configuration
+- i18n: Vietnamese (default) + English, persisted by cookie, URLs unchanged
 - Design tokens: primary `#0F5132`, secondary `#10B981`, accent `#F59E0B`;
   fonts Plus Jakarta Sans + Inter. Currency VND, business timezone Asia/Ho_Chi_Minh
 
@@ -47,7 +52,10 @@ The catalog is data-as-code and self-healing:
   identical catalog.
 
 Rating filters use the *effective* rating (`googleRating ?? in-app ratingAvg`)
-consistently across list, map and featured ranking.
+consistently across list, map and featured ranking. For imported venues,
+prices are **platform reference prices** (not owner-confirmed) and
+facilities/opening hours are platform-normalized defaults — the UI and the
+AI assistant label them as such.
 
 ## Features
 
@@ -82,45 +90,148 @@ consistently across list, map and featured ranking.
 - Venue approval queue, user management (grant/revoke roles including
   ADMIN, reset password, lock account — self-demotion blocked), audit log
 
-**AI assistant** (`/assistant`)
-- Vietnamese conversational agent over seven typed, read-only tools
-  (venue search, profiles, verbatim review evidence, review stats,
-  live availability + quotes, same-condition comparison, booking
-  handoff) with explicit conversation state, hard tool/time budgets,
-  and answers validated + hydrated server-side from tool results
-- Field-level provenance everywhere: Google aggregates stay separate
-  from in-app ratings, prices are labelled platform reference prices,
-  the schedule is labelled as the SportsHub demo schedule
-- The assistant never creates a booking — it prepares a handoff card
-  into the existing booking widget; runs on **Amazon Bedrock**
-  (Claude Haiku 4.5, `AI_PROVIDER=bedrock` + AWS credentials; the bare
-  model ID resolves to the region's inference profile automatically),
-  with a kill switch (`AI_ASSISTANT_ENABLED=false`)
-- Docs: `docs/ai-assistant.md`, `docs/ai-tools.md`,
-  `docs/ai-evaluation.md`, `docs/ai-demo-runbook.md`
-
 **Platform**
 - Rate limiting on auth, booking and API writes (429 + `Retry-After`,
   `{ code: "RATE_LIMITED" }` contract)
 - Cached public reads (`unstable_cache` DTOs in `src/lib/public-data.ts`)
 - `GET /api/health` readiness probe (503 when the DB is unreachable)
 - Branded 404 / error / loading pages, sitemap + robots
-- **PostGIS radius search** on PostgreSQL: with the `postgis`
-  extension enabled, queries like "venues within 5 km" run in SQL
-  over venue coordinates — `npm run db:postgis` (setup) and
-  `npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5`
-  (run it); see `docs/geo-radius.md`
 
-## Quick start (local)
+## AI assistant (`/assistant`)
+
+A Vietnamese multi-turn agent that follows the demo flow — *state a need →
+find venues → explain with review evidence → check schedule & quote →
+hand off to the booking UI* — over seven typed, **read-only** tools:
+`search_venues`, `get_venue_profile`, `search_review_evidence`,
+`get_review_summary_stats`, `get_bookable_options`,
+`compare_venue_options`, `prepare_booking_handoff`.
+
+Trust model (enforced in code, not just the prompt):
+
+- The assistant **never creates a booking**. It prepares a handoff card;
+  the user confirms in the existing booking widget.
+- Answers are validated and hydrated server-side from tool results —
+  venue/evidence/option/handoff IDs the model invents are rejected.
+- Google aggregates, stored Google review texts and in-app reviews are
+  three separate populations, never blended; statistics always carry a
+  numerator / denominator / scope. Prices are labelled platform
+  reference prices; availability is labelled as the SportsHub demo
+  schedule.
+- Server-side guards added from live evaluation (prompt
+  `sportshub-assistant-v6`): a **stats guard** (review counts require a
+  successful stats call in the same turn), a **slot-check guard** (a
+  complete date/time/duration in state requires a real
+  availability/price check before a shortlist can finalize), a
+  **shortlist auto-fill** (options verified by tools reach the UI even
+  when the model forgets to reference them), and a prescribed
+  **handoff recovery** (profile lookup → one retry).
+- Evaluation: scripted benchmark **50/50** (tools/protocol/no-write
+  invariant) and a 10-case **live production battery** (real model,
+  real data) whose findings drove the guards above — see
+  `eval/ai/live-eval-2026-10-28.md` and `docs/ai-evaluation.md`.
+  Known weakness: a full search + compare turn takes ~35 s.
+- Provider: **Amazon Bedrock**, Claude Haiku 4.5. The bare model ID
+  `anthropic.claude-haiku-4-5-20251001-v1:0` resolves to the region's
+  inference profile automatically. Kill switch: `AI_ASSISTANT_ENABLED=false`.
+- Docs: `docs/ai-assistant.md`, `docs/ai-tools.md`,
+  `docs/ai-evaluation.md`, `docs/ai-demo-runbook.md`
+
+## PostGIS radius search (PostgreSQL only)
+
+With PostgreSQL + PostGIS, queries like *"venues within 5 km"* run in
+SQL over venue coordinates. Design note: only the `postgis` extension
+is installed — the geography point is computed **inline** from
+latitude/longitude in each query, deliberately *not* stored as a
+column, so it can never drift from the coordinates (a generated column
+also breaks `prisma db push`). At catalog scale (~119 venues) the lack
+of a GiST index is irrelevant.
 
 ```bash
-npm install
-cp .env.example .env        # local default already works with SQLite
+npm run db:postgis   # CREATE EXTENSION IF NOT EXISTS postgis + status
+npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5
+npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5 --sport cau-long
+```
+
+See `docs/geo-radius.md` for the SQL and the rationale.
+
+## Quick start (local, core app — SQLite)
+
+Requirements: **Node.js 20+** and Git. No database server needed.
+
+```bash
+git clone https://github.com/coderuit3k/sportshub.git
+cd sportshub
+npm ci                      # exact lockfile install (Prisma is pinned to 6.19.3)
+cp .env.example .env        # defaults already point at a local SQLite file
 npx prisma generate
 npx prisma db push
-npm run db:seed             # seeds accounts + the same 119-venue real catalog
+npm run db:seed             # ~1 min: dev accounts + the same 119-venue real catalog
 npm run dev                 # http://localhost:3000
 ```
+
+Notes:
+
+- `./node_modules/.bin/prisma --version` must print **6.19.3**. If it
+  prints 7.x, your install drifted (usually a broken earlier install);
+  delete `node_modules` and re-run `npm ci`. Do **not** edit the schema
+  to satisfy Prisma 7.
+- If npm reports *install scripts blocked* for `@prisma/engines`,
+  `prisma`, `esbuild`, `@swc/core`, `sharp` or `@parcel/watcher`,
+  approve them (`npm install-scripts approve @prisma/engines
+  @prisma/client prisma esbuild @swc/core sharp @parcel/watcher`)
+  and re-run the install — without the Prisma engine scripts the
+  client cannot be generated and every later step fails.
+- ⚠️ `npm run db:seed` **wipes and recreates** the database it points
+  at. Never run it while `DATABASE_URL` points at production.
+- Later runs need only `npm run dev`.
+
+## Optional tiers
+
+### AI assistant (Bedrock)
+
+Add to `.env` (provider and model already default to Bedrock + Haiku 4.5):
+
+```bash
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+The AWS account needs Bedrock model access for Claude Haiku 4.5 in
+that region. Without credentials the `/assistant` page renders but the
+first turn returns a typed configuration error — there is no fake
+fallback model.
+
+### PostgreSQL + PostGIS (radius search)
+
+Install PostgreSQL 16 with PostGIS 3 (Ubuntu: `postgresql-16-postgis-3`),
+create a database/user, and set a **real** `DATABASE_URL` in `.env`
+(the placeholder host in `.env.example` will not connect):
+
+```bash
+# .env
+DATABASE_URL=[SECURITY_DATA]
+```
+
+```bash
+npx prisma generate --schema prisma/schema.postgresql.prisma
+npx prisma db push --schema prisma/schema.postgresql.prisma
+npm run db:seed
+npm run db:postgis
+npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5
+```
+
+(The helper scripts read `.env` themselves; no shell export needed.
+PostGIS does not exist on SQLite — that path is PostgreSQL-only.)
+
+### Photo uploads (Cloudflare R2) & rate limiting (Upstash)
+
+Set all five `R2_*` variables to enable owner photo uploads, and add a
+bucket CORS policy allowing `PUT` from your app origin
+(`http://localhost:3000` locally) — without CORS the browser upload
+fails at preflight even with correct credentials. Set both `KV_*`
+variables to switch rate limiting from the per-instance in-memory
+fallback to shared Upstash counters. Details in the env table below.
 
 ## Dev accounts (LOCAL DEVELOPMENT ONLY — never reuse in production)
 
@@ -143,15 +254,60 @@ npm run dev                 # http://localhost:3000
 | `DATABASE_URL_UNPOOLED` | prod | Direct Neon connection used by build-time db push |
 | `AUTH_SECRET` | yes | JWT signing secret |
 | `NEXT_PUBLIC_APP_URL` | yes | Public base URL of the deployment |
-| `AI_PROVIDER`, `AI_MODEL`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | optional | AI assistant on Amazon Bedrock (Claude Haiku 4.5); without AWS credentials the assistant reports a typed config error |
+| `AI_PROVIDER`, `AI_MODEL` | optional | Default `bedrock` + `anthropic.claude-haiku-4-5-20251001-v1:0`; `openai-compatible` switches provider |
+| `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | optional | Bedrock credentials; without them the assistant reports a typed config error |
+| `AI_ASSISTANT_ENABLED` | optional | Kill switch for the assistant (`false` disables) |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | optional | Upstash Redis; without both, rate limiting falls back to per-instance memory |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | optional | Cloudflare R2 photo storage; all five or uploads stay disabled (photos still display from the built-in photo pools) |
 
-See `.env.example` for details. Never commit real values.
+See `.env.example` for the full annotated list. Never commit real values.
 
 ## Scripts
 
-- `npm run dev` / `npm run build` / `npm run start`
-- `npm run typecheck` — `tsc --noEmit`
-- `n
-...[truncated 2315 chars]
+| Command | What it does |
+|---|---|
+| `npm run dev` / `npm run build` / `npm run start` | Dev server / production build / serve build |
+| `npm run typecheck` | `tsc --noEmit` (strict) |
+| `npm test` | Vitest suite — **299 passed / 10 skipped** (PostgreSQL-gated tests skip without a PG URL) |
+| `npm run test:e2e` | Playwright (some legacy specs still reference the retired fictional catalog) |
+| `npm run db:generate` / `npm run db:push` | Prisma client / schema push (SQLite schema by default) |
+| `npm run db:seed` | Destructive reseed: dev accounts + real catalog |
+| `npm run db:postgis` | Enable PostGIS + report status (PostgreSQL only) |
+| `npm run venues:near -- --lat … --lng … --radius … [--sport …]` | Radius search over venue coordinates |
+| `npx tsx eval/ai/run-benchmark.ts` | Scripted AI benchmark, 50 cases → `eval/ai/report.md` |
+
+## Deployment
+
+Vercel (project `sportshub`), build chain in `vercel.json`:
+generate the PostgreSQL Prisma client → `db push` over the unpooled
+Neon URL → `prisma/deploy-db.ts` (booking exclusion constraint,
+`ensureRealCatalog()`, `ensurePostgis()` — each idempotent and
+failure-isolated where a failure must not block the site) →
+`next build`. Environment variables live in the Vercel project
+(sensitive values are write-only there and are never in this repo).
+
+## Documentation
+
+| Doc | Contents |
+|---|---|
+| `docs/architecture.md` | System design, image storage setup |
+| `docs/database.md` | Schemas (SQLite/PostgreSQL), booking constraint |
+| `docs/api.md` | HTTP API surface |
+| `docs/deployment.md` | Deploy & operations |
+| `docs/security.md` | Auth, RBAC, demo-account rotation |
+| `docs/ai-assistant.md` | Assistant design + decision policy |
+| `docs/ai-tools.md` | The seven tools: contracts and envelopes |
+| `docs/ai-evaluation.md` | Test layers, live battery, release gates |
+| `docs/ai-demo-runbook.md` | Scripted demo walkthrough |
+| `docs/geo-radius.md` | PostGIS radius search: design + SQL |
+
+## Known limitations
+
+- Payments and outbound email are simulated (see the banner above).
+- AI assistant latency: simple turns answer in ~6–10 s, but a full
+  search + compare turn takes ~35 s (several model rounds; the model
+  sometimes needs one self-correction round on tool inputs).
+- Imported-venue prices are platform reference prices and availability
+  is the SportsHub demo schedule — labelled everywhere they appear.
+- Some legacy Playwright specs still hardcode slugs from the retired
+  fictional catalog and need updating.
