@@ -130,6 +130,28 @@ describe("orchestrator", () => {
     expect(res.trace.evidenceRoundsUsed).toBe(0);
   });
 
+  it("requires an availability/price check before finalizing a complete-slot shortlist (slot-check guard)", async () => {
+    __resetConversations();
+    let sawGuard = false;
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", district: "Thủ Đức", limit: 3 }, statePatch: { sportSlug: "cau-long", district: "Thủ Đức", dateISO: SAT, startTime: "17:00", durationHours: 1, budgetAmount: 400_000, budgetBasis: "total_session" } }),
+      // Model tries to finalize from search/reference prices alone…
+      J({ kind: "final", answer: { type: "venue_shortlist", message: "Sân này có giá theo giờ phù hợp ngân sách.", venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } }),
+      // …the guard requires a real slot check, after which options exist…
+      J({ kind: "tool_call", tool: "get_bookable_options", input: { venueId: "v_thuduc", date: SAT, durationHours: 1, preferredStartTime: "17:00" } }),
+      // …and the model may still forget optionIds (auto-fill covers that).
+      J({ kind: "final", answer: { type: "venue_shortlist", message: "Đã kiểm tra lịch và giá cho khung giờ đã chọn.", venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } }),
+    ], (messages) => {
+      if (messages.some((m) => m.role === "user" && m.content.includes("chưa kiểm tra lịch/giá thành công"))) sawGuard = true;
+    });
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông ở Thủ Đức thứ Bảy này lúc 17:00, chơi 1 tiếng, tổng dưới 400 nghìn", model, db, cfg: cfg() });
+    expect(sawGuard).toBe(true);
+    expect(res.trace.toolCalls.some((c) => c.tool === "get_bookable_options" && c.status === "ok")).toBe(true);
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.answer.options.length).toBeGreaterThan(0);
+    expect(res.trace.validation.repaired).toBe(true);
+  });
+
   it("auto-fills shortlist options the model forgot to reference (shortlist auto-fill)", async () => {
     __resetConversations();
     const model = scripted([

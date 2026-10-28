@@ -403,6 +403,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   let tokensOut = 0;
   let evidenceExecutions = 0;
   let repaired = false;
+  let slotGuardUsed = false;
   const deadline = startedAtMs + cfg.requestTimeoutMs;
   // Snapshot of registry options from EARLIER turns: the shortlist
   // auto-fill below may only use options produced by THIS turn's
@@ -464,6 +465,38 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
             "Câu trả lời chưa hợp lệ: người dùng đang hỏi SỐ LƯỢNG đánh giá nhưng bạn chưa gọi get_review_summary_stats thành công trong lượt này, nên mọi con số trong câu trả lời đều không có nguồn. Hãy gọi get_review_summary_stats (dùng search_venues trước nếu chưa có venueId) rồi trả lời lại bằng số thật, nêu rõ tử số/mẫu số/phạm vi.",
         });
         repaired = true;
+        continue;
+      }
+      // Slot-check guard (live-eval 2026-10-28, case 1 re-probe):
+      // once the conversation state contains a complete slot (date +
+      // start time + duration), a shortlist/comparison must be backed
+      // by an actual availability/price check in THIS turn. Otherwise
+      // the model can present hourly reference prices as if the slot
+      // had been checked and ask the user to choose before doing the
+      // central Demo A step. Reject the first such final once; if the
+      // model still chooses to answer after the nudge, its answer is
+      // allowed rather than trapping the turn in a repair loop.
+      const slotKnown = Boolean(conv.state.dateISO && conv.state.startTime && conv.state.durationHours);
+      const slotChecked = trace.toolCalls.some(
+        (c) =>
+          (c.tool === "compare_venue_options" || c.tool === "get_bookable_options") &&
+          c.status === "ok",
+      );
+      if (
+        !slotGuardUsed &&
+        slotKnown &&
+        !slotChecked &&
+        (reply.answer.type === "venue_shortlist" || reply.answer.type === "venue_comparison") &&
+        reply.answer.venueIds.length > 0 &&
+        (reply.answer.optionIds ?? []).length === 0
+      ) {
+        messages.push({
+          role: "user",
+          content:
+            `Câu trả lời chưa hợp lệ: hội thoại đã có đủ ngày (${conv.state.dateISO}), giờ bắt đầu (${conv.state.startTime}) và thời lượng (${conv.state.durationHours} giờ), nhưng bạn chưa kiểm tra lịch/giá thành công trong lượt này. Không được dùng giá tham chiếu theo giờ để kết luận sân phù hợp với khung giờ/ngân sách. Hãy gọi compare_venue_options cho tối đa 3 venueId trong danh sách (hoặc get_bookable_options nếu chỉ có 1 sân), dùng đúng ngày/giờ/thời lượng trong state, rồi trả lời lại bằng option thật; nếu không còn trống thì nói rõ điều đó.`,
+        });
+        repaired = true;
+        slotGuardUsed = true;
         continue;
       }
       // Shortlist auto-fill (live-eval 2026-10-28, case 1): the model

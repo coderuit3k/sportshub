@@ -91,7 +91,10 @@ repeated in tool warnings and UI labels).
   venue profile for the correct facilityId. The orchestrator also
   auto-fills a shortlist's option references from this turn's
   compare/bookable results when the model forgets to reference
-  them, so verified options always reach the UI.
+  them, so verified options always reach the UI; and when date,
+  start time and duration are already known, its slot-check guard
+  rejects a first shortlist/comparison that tries to finalize
+  without a successful availability/price check in that turn.
 - Missing sport/area/date/time/duration → clarification naming the
   missing fields; "near me" without a district → ask for the district
   (browser geolocation is never sent to the server or the model).
