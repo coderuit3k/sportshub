@@ -105,6 +105,11 @@ consistently across list, map and featured ranking.
 - Cached public reads (`unstable_cache` DTOs in `src/lib/public-data.ts`)
 - `GET /api/health` readiness probe (503 when the DB is unreachable)
 - Branded 404 / error / loading pages, sitemap + robots
+- **PostGIS radius search** on PostgreSQL: with the `postgis`
+  extension enabled, queries like "venues within 5 km" run in SQL
+  over venue coordinates — `npm run db:postgis` (setup) and
+  `npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5`
+  (run it); see `docs/geo-radius.md`
 
 ## Quick start (local)
 

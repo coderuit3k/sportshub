@@ -80,6 +80,12 @@ model Venue {
   district        String
   latitude        Float?
   longitude       Float?
+  // NOTE: radius search (docs/geo-radius.md) intentionally has NO
+  // schema footprint: the PostGIS point is computed inline from
+  // latitude/longitude in src/lib/geo/radius.ts, so `prisma db push`
+  // never has to manage a geography column (a GENERATED one actively
+  // breaks db push, and a plain one could drift). Only the postgis
+  // EXTENSION is required, ensured by prisma/postgis.ts.
   phone           String?
   email           String?
   venueType       String   @default("MIXED") // INDOOR | OUTDOOR | MIXED

@@ -33,6 +33,12 @@
  *    while R2 is not configured it logs a skip and succeeds, and a
  *    failed photo copy just leaves the external URL displaying
  *    (retried on the next build).
+ * 7. Ensures PostGIS radius search (prisma/postgis.ts): installs the
+ *    `postgis` extension — the only database object the radius query
+ *    needs, since the geography point is computed inline from
+ *    latitude/longitude at query time. Also NEVER fails the build:
+ *    a PostGIS problem is logged and the deploy proceeds without
+ *    radius search (retried next build).
  *
  * Uses DATABASE_URL from the environment; the build command points it at
  * DATABASE_URL_UNPOOLED for DDL reliability (Neon pooled endpoints are not
@@ -42,6 +48,7 @@ import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
 import { ensureRealCatalog } from "./real-catalog";
 import { migrateVenuePhotosToStorage } from "./photo-migration";
+import { ensurePostgis } from "./postgis";
 
 const prisma = new PrismaClient();
 
@@ -192,6 +199,16 @@ async function main(): Promise<void> {
     `[deploy-db] venue photos: ${photos.migrated} migrated to R2, ${photos.skipped} skipped, ` +
       `${photos.failed.length} failed (display fallback unaffected)`,
   );
+  try {
+    const postgis = await ensurePostgis(prisma);
+    console.log(
+      `[deploy-db] postgis: extension=${postgis.extensionInstalled} ` +
+        `venues-with-coordinates=${postgis.venuesWithCoordinates}`,
+    );
+  } catch (error) {
+    // Radius search is additive — never fail the build over it.
+    console.warn("[deploy-db] postgis setup skipped (radius search unavailable until a later deploy):", error);
+  }
 }
 
 // Guarded so local verification harnesses can import scrubDemoWording
