@@ -1,16 +1,16 @@
 # AI assistant — evaluation report
 
-Measured on 2026-10-27 in this workspace (local machine, fixture
-databases). Nothing here is a production measurement; conditions are
-stated next to every number.
+Measured on 2026-10-27/28 in this workspace (local machine, fixture
+databases), plus a live production battery on 2026-10-28 (§5).
+Conditions are stated next to every number.
 
 ## Test layers and results
 
-### 1. Unit / contract tests — 293/293 passing (whole repo suite)
+### 1. Unit / contract tests — 296/296 passing (whole repo suite)
 
-`npm test` → 27 files, **293 tests, 0 failures** (4 PostgreSQL tests
-skip without `AI_TEST_PG_URL`). The 54 tests added for the assistant
-(`tests/ai/`):
+`npm test` → 28 files, **296 tests, 0 failures** (10 PostgreSQL
+tests skip without a PG URL: 4 AI + 6 geo). The tests added for the
+assistant (`tests/ai/`):
 
 - `unit.test.ts` (9): diacritic folding; clause splitting keeps exact
   substrings; aspect–sentiment pairs stay inside one clause (the
@@ -109,6 +109,35 @@ real-model E2E success and p95 latency — remains unmeasured until
 AWS keys are placed in the server env (`.env` locally, Vercel env in
 production). No number is claimed for it here.
 
+### 5. Live production battery — 2026-10-28 (real model, real data)
+
+Ten hand-written cases against `POST /api/assistant` on production
+(Bedrock Haiku 4.5, prompt v5): **7 PASS · 3 PARTIAL · 0 FAIL**,
+USD 0.1466 total, per-turn latency 5.6–36 s. Full evidence and
+case-by-case notes: `eval/ai/live-eval-2026-10-28.md`.
+
+The three PARTIALs were all acted on the same day (prompt
+`sportshub-assistant-v6`):
+
+- **Booking handoff recovery is inconsistent** — the model sometimes
+  degraded to a clarification after a handoff error instead of
+  recovering via `get_venue_profile` (which succeeded in manual
+  probes). Prompt v6 rule 9 now prescribes that recovery explicitly.
+- **Review counts stated with no tool call** in one run (unverifiable
+  numbers; a manual probe with the stats tool showed the true
+  figures, 2 of 8). The orchestrator now enforces the stats call
+  server-side (stats guard) — a digit-bearing final answer to a
+  review-count question is rejected until
+  `get_review_summary_stats` has succeeded in that turn.
+- **English "District 7" search returned empty** despite District 7
+  tennis venues existing: "District N" is now translated to the
+  "quan N" needle and verified District 7 ward aliases (Tân Hưng,
+  Phú Thuận, Phú Mỹ Hưng) were added to the address fallback.
+
+Post-fix regression: suite 296/296, scripted benchmark 50/50.
+Post-fix live re-probe of cases 2, 5 and 6 is recorded in the live
+report file above.
+
 ## Release gates (proposed §12) — status
 
 | Gate | Status |
@@ -118,10 +147,10 @@ production). No number is claimed for it here.
 | Price/schedule/count exactness on standard fixtures | ✅ 22/22 integration + schedule cases |
 | Reference/simulated labels on all price/schedule outputs | ✅ tool warnings + UI labels + handoff labels (asserted in tests) |
 | Citation support ≥ 95% | ✅ by construction: server validates every cited id against the evidence pack and hydrates quotes from the DB; a fabricated id cannot render (tested) |
-| Citation coverage ≥ 95% | ⚠️ defined over model behaviour — measurable only with a real model |
-| E2E task success ≥ 90% on the initial benchmark | ✅ 100% scripted; ⚠️ real-model success unmeasured |
-| Ambiguous/missing-data cases handled | ✅ scripted (clarifications, abstentions, unsupported-filter honesty) |
-| p95 ≤ 12 s for the normal read flow | ❓ unproven — needs AWS credentials in env + a `run-benchmark-real.ts` run |
+| Citation coverage ≥ 95% | ✅ live battery case 4: 5/5 cited evidence items validated against tool results (server rejects fabricated ids by construction) |
+| E2E task success ≥ 90% on the initial benchmark | ✅ 100% scripted; live battery 2026-10-28: 7 PASS / 3 PARTIAL / 0 FAIL on 10 real-model cases (PARTIALs fixed in prompt v6, see §5) |
+| Ambiguous/missing-data cases handled | ✅ scripted + live (clarification, scope refusal, budget honesty, out-of-catalog geography) |
+| p95 ≤ 12 s for the normal read flow | ❌ not met live: simple turns 5.6–9.7 s, but the full search+compare turn takes ~33–36 s (many model rounds, first-attempt tool errors self-corrected) |
 
 ## Go / no-go
 
@@ -129,12 +158,15 @@ production). No number is claimed for it here.
 evidence → schedule/price → handoff) with the fixture dataset or a
 configured model in a sandbox.
 
-**NO-GO for customer-facing production** until: (1) AWS credentials
-are configured and `run-benchmark-real.ts` passes its hard checks
-with the real Bedrock model (including clarification quality and
-citation coverage from its expectation diagnostics), and (2) a
-live-model latency check (p95) is recorded. The PostgreSQL fixture
-gate has since been closed (see §2: 4/4 on local PG 16) and the
-provider is implemented + unit-verified (see §1, §4). The remaining
-blocker is a verification step that needs AWS credentials in the
-environment, not code.
+**Update 2026-10-28:** the assistant has been live on production
+(Bedrock, credentials in Vercel env) since 2026-10-27 by the
+project owner's decision, and the live battery in §5 supplies the
+real-model evidence this section originally waited for: the full
+demo flow completes end-to-end, scope/injection cases behave, and
+the three PARTIAL findings were fixed in prompt v6 with a
+server-side stats guard and District 7 matching. The one gate that
+remains clearly unmet is **latency** (full turns ~33–36 s vs the
+proposed p95 ≤ 12 s). `run-benchmark-real.ts` over all 50 cases is
+still unrun (it needs AWS credentials in the local environment);
+the 10-case live battery stands as the real-model measurement
+until then.

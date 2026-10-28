@@ -49,6 +49,14 @@ export interface SearchVenuesData {
  */
 const DISTRICT_ADDRESS_ALIASES: Record<string, string[]> = {
   "thu duc": ["linh xuan", "an khanh", "binh trung"],
+  // Verified 2026-10-28 against catalog addresses: Tân Hưng (Sân
+  // Tennis & Pickleball VIỆT PHỐ Q.7; Hồ bơi Sky Garden, Phú Mỹ Hưng),
+  // Phú Thuận (Sân Tennis Tấn Trường, đường Đào Trí) and the Phú Mỹ
+  // Hưng urban area (Sky Garden; Sân bóng đá mini Phú Mỹ Hưng) are
+  // District 7 wards/areas named in addresses whose district column
+  // is blank. Live-eval case 6 (English "District 7") found nothing
+  // before this entry existed.
+  "quan 7": ["tan hung", "phu thuan", "phu my hung"],
 };
 
 /**
@@ -63,6 +71,11 @@ function districtNeedles(district: string): string[] {
   const needles = new Set<string>([folded]);
   const stripped = folded.replace(/^(thanh pho|quan|tp)\.?\s+/, "");
   if (stripped !== folded && stripped.length >= 3) needles.add(stripped);
+  // English form: "District 7" → the Vietnamese needle "quan 7", which
+  // is what catalog addresses/district values actually contain, and
+  // the key the ward-alias map is indexed by.
+  const enDistrict = folded.match(/^district\s+(.+)$/);
+  if (enDistrict) needles.add(`quan ${enDistrict[1]}`);
   return [...needles];
 }
 
@@ -77,7 +90,7 @@ function districtColumnMatches(v: VenueRow, district: string): boolean {
   return false;
 }
 
-function districtMatches(v: VenueRow, district: string): boolean {
+export function districtMatches(v: VenueRow, district: string): boolean {
   if (districtColumnMatches(v, district)) return true;
   for (const n of districtNeedles(district)) {
     if (foldedIncludes(v.address, n)) return true;

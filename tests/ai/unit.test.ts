@@ -63,6 +63,31 @@ describe("stableGoogleReviewId", () => {
   });
 });
 
+describe("districtMatches (search_venues district resolution)", () => {
+  const row = (district: string, address: string) =>
+    ({ district, address }) as unknown as import("@/lib/ai/tools/shared").VenueRow;
+  // Real catalog rows (harvest 2026-10-27) whose district column is
+  // blank and whose ward only appears inside the address.
+  const vietPhoQ7 = row("", "28-30 Đường số 79, Tân Hưng, Hồ Chí Minh, Việt Nam");
+  const tanTruong = row("", "96 Đ. Đào Trí, Phú Thuận, Hồ Chí Minh 700000, Việt Nam");
+  const skyGarden = row("", "2 Đ. Phạm Văn Nghị, Khu đô thị Phú Mỹ Hưng, Tân Hưng, Hồ Chí Minh, Việt Nam");
+
+  it("matches District 7 venues by verified ward aliases, in Vietnamese and English", async () => {
+    const { districtMatches } = await import("@/lib/ai/tools/search-venues");
+    for (const v of [vietPhoQ7, tanTruong, skyGarden]) {
+      expect(districtMatches(v, "Quận 7")).toBe(true);
+      expect(districtMatches(v, "District 7")).toBe(true);
+    }
+  });
+
+  it("does not leak District 7 aliases into other districts", async () => {
+    const { districtMatches } = await import("@/lib/ai/tools/search-venues");
+    expect(districtMatches(vietPhoQ7, "Quận 1")).toBe(false);
+    expect(districtMatches(tanTruong, "Thủ Đức")).toBe(false);
+    expect(districtMatches(row("Quận 7", "7 Đ. Số 23, Quận 7, Hồ Chí Minh"), "District 7")).toBe(true);
+  });
+});
+
 describe("BudgetCounter", () => {
   it("consumes and refuses past the limit (composite calls included)", () => {
     const b = new BudgetCounter(3);

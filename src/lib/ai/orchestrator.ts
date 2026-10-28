@@ -441,6 +441,27 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     conv.state = applyStatePatch(conv.state, reply.statePatch);
 
     if (reply.kind === "final") {
+      // Stats guard (live-eval 2026-10-28, case 5): when the user asks
+      // HOW MANY reviews (a count question), the model occasionally
+      // answers with invented counts and no tool call at all. A final
+      // answer carrying digits is rejected until a
+      // get_review_summary_stats call has succeeded in THIS turn;
+      // if the rounds run out, the honest limited fallback answers
+      // instead of fabricated numbers.
+      const statsIntent =
+        /(bao nhiêu|how many)/i.test(args.userMessage) && /(đánh giá|review)/i.test(args.userMessage);
+      const statsDone = trace.toolCalls.some(
+        (c) => c.tool === "get_review_summary_stats" && c.status === "ok",
+      );
+      if (statsIntent && !statsDone && /\d/.test(reply.answer.message ?? "")) {
+        messages.push({
+          role: "user",
+          content:
+            "Câu trả lời chưa hợp lệ: người dùng đang hỏi SỐ LƯỢNG đánh giá nhưng bạn chưa gọi get_review_summary_stats thành công trong lượt này, nên mọi con số trong câu trả lời đều không có nguồn. Hãy gọi get_review_summary_stats (dùng search_venues trước nếu chưa có venueId) rồi trả lời lại bằng số thật, nêu rõ tử số/mẫu số/phạm vi.",
+        });
+        repaired = true;
+        continue;
+      }
       const check = validateAndHydrate(conv, reply.answer);
       if (check.ok) {
         trace.validation.answerValid = true;

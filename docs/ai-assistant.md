@@ -80,10 +80,15 @@ are platform reference prices and the schedule is the SportsHub demo
 schedule whenever it quotes either (enforced in the system prompt and
 repeated in tool warnings and UI labels).
 
-## Decision policy (system prompt `sportshub-assistant-v5`)
+## Decision policy (system prompt `sportshub-assistant-v6`)
 
 - Counts/shares → stats tool; a review claim → evidence tool; a
   specific time/price → bookable options; comparisons → compare tool.
+  Since v6 the stats rule has server-side teeth (the orchestrator's
+  stats guard rejects digit-bearing answers to review-count
+  questions until the stats tool has succeeded in that turn), and a
+  failed booking handoff must be retried once after fetching the
+  venue profile for the correct facilityId.
 - Missing sport/area/date/time/duration → clarification naming the
   missing fields; "near me" without a district → ask for the district
   (browser geolocation is never sent to the server or the model).

@@ -61,7 +61,7 @@ describe("orchestrator", () => {
     expect(res.trace.toolCalls[0].input).toMatchObject({ sportSlug: "cau-long", district: "Thủ Đức" });
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
-    expect(res.trace.promptVersion).toContain("v5");
+    expect(res.trace.promptVersion).toContain("v6");
   });
 
   it("rejects a hallucinated evidence id and falls back to a limited answer built from verified data", async () => {
@@ -128,6 +128,26 @@ describe("orchestrator", () => {
     // stats call (2nd evidence tool) is refused with BUDGET_EXHAUSTED.
     expect(refusals).toBeGreaterThan(0);
     expect(res.trace.evidenceRoundsUsed).toBe(0);
+  });
+
+  it("rejects review counts stated without a successful stats call (stats guard)", async () => {
+    __resetConversations();
+    let sawGuard = false;
+    const model = scripted([
+      // Model tries to answer the count from thin air first…
+      J({ kind: "final", answer: { type: "review_insight", message: "Sân có 8 bài đánh giá nhắc tới giá cả.", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } }),
+      // …the guard pushes back, so it fetches real stats…
+      J({ kind: "tool_call", tool: "get_review_summary_stats", input: { venueIds: ["v_thuduc"], source: "google" } }),
+      // …and only then may it state numbers.
+      J({ kind: "final", answer: { type: "review_insight", message: "Đã tra thống kê đánh giá từ dữ liệu thật của sân.", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } }),
+    ], (messages) => {
+      if (messages.some((m) => m.role === "user" && m.content.includes("SỐ LƯỢNG đánh giá"))) sawGuard = true;
+    });
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai có bao nhiêu bài đánh giá nhắc tới giá cả?", model, db, cfg: cfg() });
+    expect(sawGuard).toBe(true);
+    expect(res.trace.toolCalls.some((c) => c.tool === "get_review_summary_stats" && c.status === "ok")).toBe(true);
+    expect(res.answer.type).toBe("review_insight");
+    expect(res.trace.validation.repaired).toBe(true);
   });
 
   it("new user information overrides older state slots", async () => {
