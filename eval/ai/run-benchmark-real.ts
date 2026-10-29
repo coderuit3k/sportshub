@@ -174,6 +174,7 @@ async function main() {
       diagnostics,
     };
     results.push(row);
+    if (!ids) writeFileSync(path.join(__dirname, "report-real-progress.json"), JSON.stringify({ model: model.id, results }, null, 2) + "\n");
     console.log(`${outcome.toUpperCase()} ${c.id} [${c.split}/${c.category}] type=${answerType} ${latencyMs}ms${notes.length ? " · notes: " + notes.join("; ") : ""}${failures.length ? " · " + failures.join("; ") : ""}`);
   }
 
