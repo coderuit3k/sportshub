@@ -119,14 +119,27 @@ handoff id exists in the tool-result registry) and *grounding*
 including the stats registry; price provenance cannot be upgraded
 to "official"/"owner-confirmed" in prose; cited evidence must
 belong to the answer's venue and overlap the citing sentence's
-aspects). Grounding deliberately does NOT claim semantic entailment
+aspects). Opening-hours claims now also need a `get_venue_profile`
+result for exactly one referenced venue in the current user turn:
+the stated `HH:MM` endpoints must match that venue's operating hours
+for the named weekday, or all seven days for an unqualified claim.
+Multi-day ranges must be split into separate claims; a conflicting
+venue name or district in the prose is rejected when recognizable.
+An honest "not checked" answer remains allowed. This guard covers
+recognizable opening-hours wording; it is not a general semantic
+parser. A `limited_answer` may reference the profile's `venueId`
+without a preceding search card; address digits from that profile
+are grounded only for that referenced venue. Grounding deliberately
+does NOT claim semantic entailment
 of free prose — see the residual limits in
 `docs/ai-evaluation.md` §6.
 
 **Registry freshness.** Options, handoffs and comparisons are
 slot-specific: any state change to sport, district, date, start
 time, duration, budget or the venue set invalidates them, and the
-model must re-check before they can be issued again. Handoffs
+model must re-check before they can be issued again. Operating-hour
+profiles are cleared at the start of each user turn, so a later
+answer cannot cite stale profile hours from an earlier turn. Handoffs
 additionally re-quote freshly inside the tool. Venue cards,
 evidence and stats persist for the conversation; a review deleted
 mid-conversation is only detected on re-fetch (documented limit).

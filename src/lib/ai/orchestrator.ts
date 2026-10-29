@@ -38,6 +38,7 @@ import { clauseAspects } from "./aspects";
 import { foldVi } from "./text";
 import { BUSINESS_TZ, fromWallTime, todayDateISO } from "@/lib/time/tz";
 import type { VenueCardData } from "./tools/shared";
+import type { VenueProfileData } from "./tools/get-venue-profile";
 import type { EvidenceItem } from "./tools/review-evidence";
 import type { BookableOption } from "./tools/bookable-options";
 import type { VenueComparison } from "./tools/compare";
@@ -66,6 +67,7 @@ const StatePatch = ConversationState.partial().extend({
 
 interface RuntimeRegistry {
   venues: Map<string, VenueCardData>;
+  profiles: Map<string, VenueProfileData>;
   evidence: Map<string, EvidenceItem>;
   options: Map<string, BookableOption>;
   handoffs: Map<string, BookingHandoff>;
@@ -158,7 +160,7 @@ function getOrCreateConversation(
     principal,
     state: parsedState?.success ? parsedState.data : ConversationState.parse({}),
     history,
-    registry: { venues: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, stats: new Map(), factNumbers: new Set(), warnings: [] },
+    registry: { venues: new Map(), profiles: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, stats: new Map(), factNumbers: new Set(), warnings: [] },
     updatedAt: nowMs,
   };
   conversations.set(`${principal}:${c.id}`, c);
@@ -311,6 +313,10 @@ function registerToolResult(conv: Conversation, tool: string, env: ToolEnvelope<
     conv.registry.factNumbers.add(venues.length);
     for (const v of venues) conv.registry.venues.set(v.venueId, v);
   }
+  if (tool === "get_venue_profile") {
+    const profile = data as unknown as VenueProfileData;
+    conv.registry.profiles.set(profile.venueId, profile);
+  }
   if (tool === "search_review_evidence") {
     const items = (data.items as EvidenceItem[]) ?? [];
     conv.registry.factNumbers.add(items.length);
@@ -391,6 +397,13 @@ function collectFactNumbers(
     addStringDigits(n, v.name);
     addStringDigits(n, v.address);
     addStringDigits(n, v.district);
+  }
+  for (const id of draft.venueIds) {
+    const profile = conv.registry.profiles.get(id);
+    if (!profile) continue;
+    addStringDigits(n, profile.name);
+    addStringDigits(n, profile.address);
+    addStringDigits(n, profile.district);
   }
   for (const o of conv.registry.options.values()) {
     addFactNumbers(n, o.totalPrice);
@@ -512,6 +525,59 @@ function groundingProblems(
       if (!ok) problems.push(`số ${value} trong câu trả lời không có trong dữ kiện do tool cung cấp`);
     }
   }
+  // shortcut: parse common opening-hours wording and HH:MM; extend for new phrasing seen in real-model runs.
+  for (const clause of draft.message.split(/[.!?;\n]+/)) {
+    const foldedClause = foldVi(clause);
+    const cues = [...foldedClause.matchAll(/\b(mo cua|dong cua|gio hoat dong|gio mo|gio dong|mo tu|mo luc|dong luc|hoat dong tu|opening hours|open from|opens from|opens at|closes at)\b/g)];
+    if (cues.length === 0) continue;
+    const times = [...clause.matchAll(/\b(?:[01]?\d|2[0-3]|24):[0-5]\d\b/g)].map((m) => m[0].padStart(5, "0"));
+    const allDayClaim = /\b(ca ngay|suot ngay|24\/7|all day|24 hours)\b/.test(foldedClause);
+    if (times.length === 0 && /\b(chua kiem tra|chua ro|chua duoc xac minh|chua xac minh|khong biet|khong ro|khong co du lieu)\b/.test(foldedClause)
+      && cues.length === 1 && !allDayClaim && !/\b(nhung|but)\b/.test(foldedClause)) continue;
+    if (times.length === 0 && cues.length === 1 && !allDayClaim && /^ban\b/.test(foldedClause)
+      && /\b(may gio|san nao|gio nao|bao gio)\b/.test(foldedClause)) continue;
+    const profile = draft.venueIds.length === 1 ? conv.registry.profiles.get(draft.venueIds[0]) : null;
+    if (!profile) {
+      problems.push("giờ mở cửa cần get_venue_profile trong lượt này và venueIds chứa đúng venueId từ profile");
+      continue;
+    }
+    const targetLocation = foldVi(`${profile.district} ${profile.address} ${profile.description}`);
+    const otherVenues = [...conv.registry.venues.values(), ...conv.registry.profiles.values()]
+      .filter((venue) => venue.venueId !== profile.venueId);
+    const otherDistricts = otherVenues.map((venue) => foldVi(venue.district));
+    const otherNames = otherVenues.map((venue) => foldVi(venue.name))
+      .filter((name) => name.length >= 8 && !foldVi(profile.name).includes(name));
+    const districtMentions = [...foldedClause.matchAll(/\b(?:quan|district)\s+\d+\b|\bthu duc\b/g)].map((m) => m[0]);
+    if (otherNames.some((name) => foldedClause.includes(name)) ||
+      [...otherDistricts, ...districtMentions].some((district) => district && !targetLocation.includes(district) && foldedClause.includes(district))) {
+      problems.push("giờ mở cửa trong câu trả lời thuộc sân khác với venueIds/profile đã kiểm tra");
+      continue;
+    }
+    if (times.length === 0 && cues.length === 1 && !allDayClaim
+      && /\b(chuan hoa|nhap tu google|imported from google)\b/.test(foldedClause)) {
+      if (profile.provenance.operatingHours !== "imported") problems.push("nguồn giờ mở cửa trong câu trả lời không khớp profile");
+      continue;
+    }
+    const dayNames = [
+      ["chu nhat", "sunday"], ["thu hai", "monday"], ["thu ba", "tuesday"], ["thu tu", "wednesday"],
+      ["thu nam", "thursday"], ["thu sau", "friday"], ["thu bay", "saturday"],
+    ];
+    const days = dayNames.flatMap((names, dayOfWeek) =>
+      names.some((name) => new RegExp(`\\b${name}\\b`).test(foldedClause)) ? [dayOfWeek] : []);
+    if (days.length > 1) {
+      problems.push("giờ mở cửa cho nhiều ngày cần được tách và kiểm tra từng ngày");
+      continue;
+    }
+    const day = /\b(hang ngay|moi ngay|daily|every day)\b/.test(foldedClause) ? -1 : (days[0] ?? -1);
+    const hours = day >= 0 ? profile.operatingHours.filter((h) => h.dayOfWeek === day) : profile.operatingHours;
+    const matches = hours.length === (day >= 0 ? 1 : 7) && hours.every((h) =>
+      times.length === 2 ? h.openTime === times[0] && h.closeTime === times[1]
+        : times.length === 1 && /\b(dong cua|dong luc|gio dong|closes at)\b/.test(foldedClause)
+          ? h.closeTime === times[0]
+          : times.length === 1 && /\b(mo cua|mo tu|mo luc|gio mo|open from|opens from|opens at)\b/.test(foldedClause) && h.openTime === times[0],
+    );
+    if (!matches) problems.push("giờ mở cửa trong câu trả lời không khớp giờ hoạt động của sân/ngày từ get_venue_profile");
+  }
   // Provenance labels may never be upgraded in prose. The check is
   // negation-aware per clause: "đây KHÔNG PHẢI giá chính thức" and
   // "giá CHƯA được chủ sân xác nhận" state the truth and must pass —
@@ -582,7 +648,11 @@ function validateAndHydrate(
   // itself (validated separately below) — the comparison tool does not
   // mint venue cards, so the card-registry check does not apply.
   if (draft.type !== "venue_comparison") {
-    for (const id of draft.venueIds) if (!conv.registry.venues.has(id)) problems.push(`unknown venueId ${id}`);
+    for (const id of draft.venueIds) {
+      if (!conv.registry.venues.has(id) && !(draft.type === "limited_answer" && conv.registry.profiles.has(id))) {
+        problems.push(`unknown venueId ${id}`);
+      }
+    }
   }
   for (const id of draft.evidenceIds) if (!conv.registry.evidence.has(id)) problems.push(`unknown evidenceId ${id}`);
   for (const id of draft.optionIds) if (!conv.registry.options.has(id)) problems.push(`unknown optionId ${id}`);
@@ -684,6 +754,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   const startedAtMs = Date.now();
   const traceId = randomUUID();
   const conv = getOrCreateConversation(args.conversationId, args.clientContext, args.principal);
+  conv.registry.profiles.clear(); // hours must come from a profile checked in this user turn
   const budget = new BudgetCounter(cfg.maxToolExecutions);
   const toolCtxBase = { db: args.db, now, timeoutMs: cfg.toolTimeoutMs };
 
