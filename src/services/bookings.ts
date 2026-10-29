@@ -151,12 +151,15 @@ export async function transitionBooking(bookingId: string, toStatus: string, act
     refundAmount = calculateRefund(booking.totalPrice, booking.startAt, new Date(), policy).refundAmount;
   }
   const updated = await prisma.$transaction(async (tx) => {
-    const u = await tx.booking.update({ where: { id: bookingId }, data: { status: toStatus, refundAmount } });
+    const u = await tx.booking.update({ where: { id: bookingId, status: booking.status }, data: { status: toStatus, refundAmount } });
     await tx.bookingStatusHistory.create({ data: { bookingId, fromStatus: booking.status, toStatus, actorId, note } });
     if (toStatus === "CANCELLED" && refundAmount !== undefined && refundAmount > 0) {
       await tx.payment.create({ data: { bookingId, userId: booking.userId, provider: "SIMULATED", status: "REFUNDED_SIMULATED", amount: -refundAmount, simulated: true } });
     }
     return u;
+  }).catch((error: unknown) => {
+    if ((error as { code?: string }).code === "P2025") throw new Error("BOOKING_STATE_CHANGED");
+    throw error;
   });
   await notify(booking.userId, "BOOKING", `Cập nhật đặt sân ${booking.reference}`, `Trạng thái mới: ${toStatus}${refundAmount !== undefined ? ` — hoàn: ${refundAmount.toLocaleString("vi-VN")} đ` : ""}`, booking.id, `booking-${booking.id}-${toStatus}-${Date.now()}`);
   return updated;

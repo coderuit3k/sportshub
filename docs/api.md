@@ -9,7 +9,7 @@ All mutations require the `sportshub_session` httpOnly cookie unless noted. Erro
 | GET | /api/health | public | `{ status: "ok", db: "ok" }` via a real `SELECT 1` probe; 503 `{ status: "error", db: "unreachable" }` when the DB is down. No sensitive info |
 | POST | /api/auth/logout | session | clears cookie |
 | POST | /api/bookings | session | Body: facilityId, startAt, endAt, idempotencyKey. Server computes price. Same key → returns existing booking (200). 409 SLOT_TAKEN / SLOT_BLOCKED. Rate limited: 30 / 10 min per user → 429 |
-| POST | /api/bookings/[id]/action | session + ownership/role | action: cancel / approve / reject / complete. Cancel computes refund from stored policy snapshot |
+| POST | /api/bookings/[id]/action | session + ownership/role | action: cancel / approve / reject / complete. Cancel computes refund from stored policy snapshot. If another action changes status first, returns 409 `BOOKING_STATE_CHANGED`; client should reload before retrying. |
 | POST | /api/favorites | session | toggles favorite |
 | POST | /api/sessions | session | creates session; organizer auto-joined |
 | POST | /api/sessions/[id]/join | session | action join/leave; capacity + duplicate checks; full → 409 |
