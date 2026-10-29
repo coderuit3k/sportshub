@@ -175,7 +175,11 @@ export async function searchReviewEvidence(
           publishedDate: r.createdAt.toISOString(),
           relativeTimeRaw: null,
           contentVersion: ASPECT_TAXONOMY_VERSION,
-          citationTarget: `/venues/${v.slug}#review-${r.id}`,
+          // In-app reviews are NOT rendered as anchored articles on
+          // the venue page (only Google reviews are), so an in-app
+          // citation may only point at the page itself — never at a
+          // `#review-<id>` anchor that does not exist.
+          citationTarget: `/venues/${v.slug}`,
           score: best.score,
         });
       }

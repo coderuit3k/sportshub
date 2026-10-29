@@ -27,6 +27,29 @@ export interface ComparisonRow {
   values: (string | number | null)[];
 }
 
+/**
+ * Per-venue quote outcome. The distinction that matters: an ERROR
+ * (timeout, budget, DB, invalid input) is `unknown_due_to_error` —
+ * it is NOT evidence that the venue has no slot. Only a completed
+ * quote query can produce `unavailable`. A slot that exists but
+ * cannot be priced is `price_unavailable`, never "free".
+ */
+export type QuoteOutcome =
+  | "available"
+  | "unavailable"
+  | "price_unavailable"
+  | "unknown_due_to_error"
+  | "not_checked";
+
+export interface VenueOutcome {
+  venueId: string;
+  profile: "ok" | "error";
+  profileErrorCode: string | null;
+  quote: QuoteOutcome;
+  quoteErrorCode: string | null;
+  quoteCheckedAt: string | null;
+}
+
 export interface VenueComparison {
   venueIds: string[];
   rows: ComparisonRow[];
@@ -37,7 +60,9 @@ export interface VenueComparison {
     unknownFields: string[];
     dataCompleteness: number; // 0..1 — completeness of DATA, not quality
     bestOption: BookableOption | null;
+    quoteOutcome: QuoteOutcome;
   }[];
+  venueOutcomes: VenueOutcome[];
   conditions: { date: string | null; startTime: string | null; durationHours: number | null };
 }
 
@@ -64,15 +89,27 @@ export async function compareVenueOptions(
     const profileResults = await Promise.all(
       args.venueIds.map((venueId) => getVenueProfile(ctx, { venueId })),
     );
-    const profiles = [];
-    for (const p of profileResults) {
+    // A failed profile no longer sinks the whole comparison: the
+    // venue stays in the result as an explicit unknown (null row
+    // values, profile: "error" in venueOutcomes) and the envelope
+    // degrades to "partial". Only when EVERY profile fails is there
+    // nothing usable to compare → error envelope.
+    const profiles: (Awaited<ReturnType<typeof getVenueProfile>>["data"])[] = [];
+    const profileErrors = new Map<string, string>();
+    profileResults.forEach((p, i) => {
       if (p.status === "error" || !p.data) {
-        return errorEnvelope(p.error?.code ?? ToolErrorCode.NotFound, p.error?.message ?? "Profile unavailable", {
-          warnings,
-        });
+        profiles.push(null);
+        profileErrors.set(args.venueIds[i], p.error?.code ?? ToolErrorCode.NotFound);
+      } else {
+        profiles.push(p.data);
+        warnings.push(...p.warnings);
       }
-      profiles.push(p.data);
-      warnings.push(...p.warnings);
+    });
+    if (profiles.every((p) => p === null)) {
+      const first = profileResults[0];
+      return errorEnvelope(first?.error?.code ?? ToolErrorCode.NotFound, first?.error?.message ?? "Profiles unavailable", {
+        warnings,
+      });
     }
 
     const stats = await getReviewSummaryStats(ctx, {
@@ -81,10 +118,21 @@ export async function compareVenueOptions(
       aspects: args.aspects,
     });
     if (stats.data) warnings.push(...stats.warnings);
+    else if (stats.error) {
+      // Stats failure must be visible, never silently read as zeros.
+      warnings.push(`Không lấy được thống kê đánh giá (${stats.error.code}) — các ô thống kê để trống, không phải 0.`);
+    }
 
     // Same-condition quotes: one identical request shape per venue,
-    // fetched in parallel like the profiles above.
+    // fetched in parallel like the profiles above. Every venue gets an
+    // explicit QuoteOutcome — an errored sub-call is recorded as
+    // unknown_due_to_error with its errorCode, NEVER collapsed into
+    // "no available option".
     const bestOptions = new Map<string, BookableOption | null>();
+    const quoteOutcomes = new Map<string, { outcome: QuoteOutcome; errorCode: string | null; checkedAt: string | null }>();
+    for (const venueId of args.venueIds) {
+      quoteOutcomes.set(venueId, { outcome: "not_checked", errorCode: null, checkedAt: null });
+    }
     if (args.date && args.durationHours) {
       const quoteResults = await Promise.all(
         args.venueIds.map((venueId) =>
@@ -100,26 +148,43 @@ export async function compareVenueOptions(
       );
       quoteResults.forEach((q, i) => {
         const venueId = args.venueIds[i];
-        if (q.data) {
-          warnings.push(...q.warnings);
-          const available = q.data.options.filter((o) => o.slotAvailable && o.priceStatus === "ok");
-          available.sort((a, b) => (a.totalPrice ?? Infinity) - (b.totalPrice ?? Infinity));
-          bestOptions.set(venueId, available[0] ?? null);
+        if (q.status === "error" || !q.data) {
+          bestOptions.set(venueId, null);
+          quoteOutcomes.set(venueId, {
+            outcome: "unknown_due_to_error",
+            errorCode: q.error?.code ?? ToolErrorCode.DbError,
+            checkedAt: q.checkedAt ?? null,
+          });
+          return;
+        }
+        warnings.push(...q.warnings);
+        const availablePriced = q.data.options.filter((o) => o.slotAvailable && o.priceStatus === "ok");
+        availablePriced.sort((a, b) => (a.totalPrice ?? Infinity) - (b.totalPrice ?? Infinity));
+        if (availablePriced.length > 0) {
+          bestOptions.set(venueId, availablePriced[0]);
+          quoteOutcomes.set(venueId, { outcome: "available", errorCode: null, checkedAt: q.data.checkedAt });
+        } else if (q.data.options.some((o) => o.slotAvailable)) {
+          // A slot exists but cannot be priced — distinct from both
+          // "available" and "unavailable", and never a 0/free quote.
+          bestOptions.set(venueId, null);
+          quoteOutcomes.set(venueId, { outcome: "price_unavailable", errorCode: ToolErrorCode.PriceUnavailable, checkedAt: q.data.checkedAt });
         } else {
           bestOptions.set(venueId, null);
+          quoteOutcomes.set(venueId, { outcome: "unavailable", errorCode: null, checkedAt: q.data.checkedAt });
         }
       });
     }
 
     const rows: ComparisonRow[] = [
-      { key: "name", label: "Sân", values: profiles.map((p) => `${p.name} (${p.district})`) },
-      { key: "googleRating", label: "Điểm Google", values: profiles.map((p) => p.googleRating?.value ?? null) },
-      { key: "googleRatingCount", label: "Số đánh giá Google", values: profiles.map((p) => p.googleRating?.count ?? null) },
-      { key: "inAppRating", label: "Điểm trong SportsHub", values: profiles.map((p) => (p.inAppRating.count > 0 ? p.inAppRating.value : null)) },
+      { key: "name", label: "Sân", values: profiles.map((p) => (p ? `${p.name} (${p.district})` : null)) },
+      { key: "googleRating", label: "Điểm Google", values: profiles.map((p) => p?.googleRating?.value ?? null) },
+      { key: "googleRatingCount", label: "Số đánh giá Google", values: profiles.map((p) => p?.googleRating?.count ?? null) },
+      { key: "inAppRating", label: "Điểm trong SportsHub", values: profiles.map((p) => (p && p.inAppRating.count > 0 ? p.inAppRating.value : null)) },
       {
         key: "minReferenceHourlyPrice",
         label: "Giá tham chiếu thấp nhất (mỗi giờ)",
         values: profiles.map((p) => {
+          if (!p) return null;
           const prices = p.facilities.map((f) => f.minReferenceHourlyPrice).filter((x): x is number => x !== null);
           return prices.length ? Math.min(...prices) : null;
         }),
@@ -129,7 +194,7 @@ export async function compareVenueOptions(
       rows.push({
         key: "quoteSameConditions",
         label: `Tổng giá ${args.durationHours} giờ ngày ${args.date}${args.startTime ? ` từ ${args.startTime}` : ""}`,
-        values: profiles.map((p) => bestOptions.get(p.venueId)?.totalPrice ?? null),
+        values: args.venueIds.map((venueId) => bestOptions.get(venueId)?.totalPrice ?? null),
       });
     }
     if (stats.data && args.aspects) {
@@ -146,43 +211,79 @@ export async function compareVenueOptions(
       }
     }
 
-    const perVenue = profiles.map((p) => {
+    const perVenue = args.venueIds.map((venueId, i) => {
+      const p = profiles[i];
+      const quote = quoteOutcomes.get(venueId)!;
+      if (!p) {
+        return {
+          venueId,
+          matchedConstraints: [] as string[],
+          unmetConstraints: [] as string[],
+          unknownFields: ["profile", "googleRating", "inAppRating", "prices", "operatingHours"],
+          dataCompleteness: 0,
+          bestOption: null,
+          quoteOutcome: quote.outcome,
+        };
+      }
       const unknownFields: string[] = [];
       if (!p.googleRating) unknownFields.push("googleRating");
       if (p.inAppRating.count === 0) unknownFields.push("inAppRating");
       if (p.facilities.every((f) => f.minReferenceHourlyPrice === null)) unknownFields.push("prices");
       if (p.operatingHours.length === 0) unknownFields.push("operatingHours");
-      const known = 4 - unknownFields.length;
+      if (quote.outcome === "unknown_due_to_error") unknownFields.push("availability");
+      if (quote.outcome === "price_unavailable") unknownFields.push("quotePrice");
+      const known = 4 - unknownFields.filter((f) => ["googleRating", "inAppRating", "prices", "operatingHours"].includes(f)).length;
       const matched: string[] = [];
       const unmet: string[] = [];
-      const best = bestOptions.get(p.venueId) ?? null;
+      const best = bestOptions.get(venueId) ?? null;
+      // "no_available_option" is a CONCLUSION and may only be drawn
+      // from a completed quote query that found no slot. An errored
+      // or unpriced check leaves the constraint undecided (unknown),
+      // so the venue is never ranked as worse because a tool failed.
       if (args.budgetAmount != null) {
         if (best && best.meetsBudget) matched.push("budget");
         else if (best) unmet.push("budget");
-        else if (args.date) unmet.push("no_available_option");
+        else if (quote.outcome === "unavailable") unmet.push("no_available_option");
       }
       if (args.date && args.durationHours) {
         if (best) matched.push("availability_same_conditions");
-        else if (!unmet.includes("no_available_option")) unmet.push("no_available_option");
+        else if (quote.outcome === "unavailable" && !unmet.includes("no_available_option")) unmet.push("no_available_option");
       }
       return {
-        venueId: p.venueId,
+        venueId,
         matchedConstraints: matched,
         unmetConstraints: unmet,
         unknownFields,
         dataCompleteness: known / 4,
         bestOption: best,
+        quoteOutcome: quote.outcome,
       };
     });
+
+    const venueOutcomes: VenueOutcome[] = args.venueIds.map((venueId) => {
+      const quote = quoteOutcomes.get(venueId)!;
+      return {
+        venueId,
+        profile: profileErrors.has(venueId) ? "error" : "ok",
+        profileErrorCode: profileErrors.get(venueId) ?? null,
+        quote: quote.outcome,
+        quoteErrorCode: quote.errorCode,
+        quoteCheckedAt: quote.checkedAt,
+      };
+    });
+    const hasUnknowns =
+      profileErrors.size > 0 || venueOutcomes.some((o) => o.quote === "unknown_due_to_error");
 
     return okEnvelope(
       {
         venueIds: args.venueIds,
         rows,
         perVenue,
+        venueOutcomes,
         conditions: { date: args.date ?? null, startTime: args.startTime ?? null, durationHours: args.durationHours ?? null },
       },
       {
+        status: hasUnknowns ? "partial" : "ok",
         appliedFilters: { ...args },
         checkedAt: ctx.now.toISOString(),
         warnings: [...new Set(warnings)],

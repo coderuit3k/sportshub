@@ -27,6 +27,14 @@ export interface AiConfig {
   toolTimeoutMs: number;
   requestTimeoutMs: number;
   modelTimeoutMs: number;
+  /** Max output tokens per single model call (provider-enforced). */
+  maxOutputTokens: number;
+  /** Total token budget per turn (input + output, summed over all
+   * model rounds). Checked BETWEEN rounds: the round that crosses
+   * the line is already paid for, so the overshoot is bounded by one
+   * round — this is a spend cap with one-call slack, not an exact
+   * monetary hard cap. */
+  maxTotalTokens: number;
   /** Optional USD prices per 1M tokens for cost ESTIMATES; null →
    * cost is reported as unknown, never as 0. */
   pricePerMillion: { input: number; output: number } | null;
@@ -65,6 +73,8 @@ export function loadAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
     toolTimeoutMs: intEnv("AI_TOOL_TIMEOUT_MS", 15_000),
     requestTimeoutMs: intEnv("AI_REQUEST_TIMEOUT_MS", 60_000),
     modelTimeoutMs: intEnv("AI_MODEL_TIMEOUT_MS", 20_000),
+    maxOutputTokens: intEnv("AI_MAX_OUTPUT_TOKENS", 2048),
+    maxTotalTokens: intEnv("AI_MAX_TOTAL_TOKENS", 150_000),
     pricePerMillion:
       envPrice ??
       (providerKind === "bedrock" ? BEDROCK_HAIKU_45_PRICE_PER_MILLION : null),

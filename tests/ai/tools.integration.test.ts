@@ -190,7 +190,15 @@ describe("search_review_evidence", () => {
         expect(item.publishedDate).toBeNull();
         expect(item.relativeTimeRaw).toBeTruthy();
       }
-      expect(item.citationTarget).toContain(item.evidenceId);
+      if (item.source === "google") {
+        // Google reviews render as anchored articles on the venue
+        // page: the citation target must carry the matching anchor.
+        expect(item.citationTarget).toBe(`/venues/minh-khai-thu-duc#review-${item.evidenceId}`);
+      } else {
+        // In-app reviews are not rendered as anchored articles, so
+        // the citation must NOT invent a #review-<id> anchor.
+        expect(item.citationTarget).not.toContain("#");
+      }
     }
   });
 
@@ -348,6 +356,65 @@ describe("compare_venue_options", () => {
     expect(owner.unknownFields).toContain("googleRating");
     const ratingRow = res.data!.rows.find((r) => r.key === "googleRating")!;
     expect(ratingRow.values).toEqual([4.6, null]);
+  });
+
+  it("a budget-exhausted quote sub-call is unknown_due_to_error, never no_available_option", async () => {
+    // Budget: compare(1) + profiles(2) + stats(1) + quotes(2) = 6.
+    // Limit 5 → the second venue's quote is refused with
+    // BUDGET_EXHAUSTED; that must surface as an explicit unknown.
+    const res = await compareVenueOptions(fixtureCtx(db, 5), {
+      venueIds: ["v_thuduc", "v_quan7"], criteria: [], date: SAT, startTime: "17:00", durationHours: 1,
+      budgetAmount: 400_000, budgetBasis: "total_session",
+    });
+    expect(res.status).toBe("partial");
+    const outcomes = Object.fromEntries(res.data!.venueOutcomes.map((o) => [o.venueId, o]));
+    expect(outcomes["v_thuduc"].quote).toBe("available");
+    expect(outcomes["v_quan7"].quote).toBe("unknown_due_to_error");
+    expect(outcomes["v_quan7"].quoteErrorCode).toBe("BUDGET_EXHAUSTED");
+    const quan7 = res.data!.perVenue.find((p) => p.venueId === "v_quan7")!;
+    expect(quan7.unmetConstraints).not.toContain("no_available_option");
+    expect(quan7.unknownFields).toContain("availability");
+  });
+
+  it("a facility without price rules is price_unavailable, not free and not unavailable", async () => {
+    const res = await compareVenueOptions(fixtureCtx(db), {
+      venueIds: ["v_thuduc", "v_owner"], criteria: [], date: SAT, startTime: "17:00", durationHours: 1,
+    });
+    const outcomes = Object.fromEntries(res.data!.venueOutcomes.map((o) => [o.venueId, o]));
+    expect(outcomes["v_owner"].quote).toBe("price_unavailable");
+    const owner = res.data!.perVenue.find((p) => p.venueId === "v_owner")!;
+    expect(owner.bestOption).toBeNull();
+    expect(owner.unmetConstraints).not.toContain("no_available_option");
+    const quoteRow = res.data!.rows.find((r) => r.key === "quoteSameConditions")!;
+    expect(quoteRow.values[1]).toBeNull(); // never a 0-as-free quote
+  });
+
+  it("one venue's profile failure degrades to partial; all failing is an error", async () => {
+    const partial = await compareVenueOptions(fixtureCtx(db), { venueIds: ["v_thuduc", "v_hidden"], criteria: [] });
+    expect(partial.status).toBe("partial");
+    const hidden = partial.data!.venueOutcomes.find((o) => o.venueId === "v_hidden")!;
+    expect(hidden.profile).toBe("error");
+    expect(hidden.profileErrorCode).toBeTruthy();
+    const nameRow = partial.data!.rows.find((r) => r.key === "name")!;
+    expect(nameRow.values[0]).toContain("Minh Khai");
+    expect(nameRow.values[1]).toBeNull();
+
+    const allBad = await compareVenueOptions(fixtureCtx(db), { venueIds: ["v_hidden", "v_nope"], criteria: [] });
+    expect(allBad.status).toBe("error");
+    expect(allBad.data).toBeNull();
+  });
+
+  it("a genuinely locked slot still reads as unavailable after a completed check", async () => {
+    // f_thuduc is blocked 20:00–21:00 on the fixture Saturday, so a
+    // completed quote query legitimately concludes "unavailable".
+    const res = await compareVenueOptions(fixtureCtx(db), {
+      venueIds: ["v_thuduc", "v_quan7"], criteria: [], date: SAT, startTime: "20:00", durationHours: 1,
+    });
+    expect(res.status).not.toBe("error");
+    const thuduc = res.data!.venueOutcomes.find((o) => o.venueId === "v_thuduc")!;
+    expect(thuduc.quote).toBe("unavailable");
+    const pv = res.data!.perVenue.find((p) => p.venueId === "v_thuduc")!;
+    expect(pv.unmetConstraints).toContain("no_available_option");
   });
 });
 
