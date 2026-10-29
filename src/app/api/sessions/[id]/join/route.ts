@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { canJoinSession } from "@/lib/booking/logic";
+import { SESSIONS_TAG } from "@/lib/public-data";
+import { changeSessionParticipation } from "@/services/sessions";
 import { notify } from "@/lib/notifications";
 import { sessionJoinLimiter, tooManyRequests } from "@/lib/rate-limit";
 
@@ -17,28 +18,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Hành động không hợp lệ" }, { status: 400 });
-  const session = await prisma.sportsSession.findUnique({ where: { id }, include: { participants: true } });
-  if (!session) return NextResponse.json({ error: "Không tìm thấy kèo" }, { status: 404 });
-
-  if (parsed.data.action === "leave") {
-    await prisma.sessionParticipant.deleteMany({ where: { sessionId: id, userId: user.id } });
-    const count = await prisma.sessionParticipant.count({ where: { sessionId: id, status: "JOINED" } });
-    if (session.status === "FULL" && count < session.maxParticipants) await prisma.sportsSession.update({ where: { id }, data: { status: "OPEN" } });
-    return NextResponse.json({ joined: false });
+  try {
+    const result = await changeSessionParticipation(id, user.id, parsed.data.action);
+    revalidateTag(SESSIONS_TAG);
+    if (result.joined) {
+      await notify(result.session.organizerId, "SESSION", "Có người tham gia kèo", `${user.name} vừa tham gia: ${result.session.title}`, id, `join-${id}-${user.id}`);
+    }
+    return NextResponse.json({ joined: result.joined });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "UNKNOWN";
+    const errors: Record<string, [string, number]> = {
+      SESSION_NOT_FOUND: ["Không tìm thấy kèo", 404],
+      SESSION_ALREADY_JOINED: ["Bạn đã tham gia kèo này rồi", 409],
+      SESSION_FULL: ["Kèo đã đầy", 409],
+      SESSION_CLOSED: ["Kèo đã kết thúc hoặc bị hủy", 409],
+      SESSION_BUSY: ["Kèo vừa được cập nhật, vui lòng thử lại", 409],
+    };
+    const known = errors[code];
+    if (!known) {
+      console.error("[session-participation] unexpected error", error);
+      return NextResponse.json({ error: "Không cập nhật được kèo" }, { status: 500 });
+    }
+    const [message, status] = known;
+    return NextResponse.json({ error: message, code }, { status });
   }
-  // join — duplicate prevention via unique constraint + pre-check
-  const already = session.participants.find((p) => p.userId === user.id && p.status === "JOINED");
-  if (already) return NextResponse.json({ error: "Bạn đã tham gia kèo này rồi" }, { status: 409 });
-  const joinedCount = session.participants.filter((p) => p.status === "JOINED").length;
-  if (!canJoinSession(joinedCount, session.maxParticipants)) return NextResponse.json({ error: "Kèo đã đầy" }, { status: 409 });
-  await prisma.$transaction(async (tx) => {
-    await tx.sessionParticipant.upsert({
-      where: { sessionId_userId: { sessionId: id, userId: user.id } },
-      create: { sessionId: id, userId: user.id, status: "JOINED" },
-      update: { status: "JOINED" },
-    });
-    if (joinedCount + 1 >= session.maxParticipants) await tx.sportsSession.update({ where: { id }, data: { status: "FULL" } });
-  });
-  await notify(session.organizerId, "SESSION", "Có người tham gia kèo", `${user.name} vừa tham gia: ${session.title}`, id, `join-${id}-${user.id}`);
-  return NextResponse.json({ joined: true });
 }
