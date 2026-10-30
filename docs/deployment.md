@@ -24,4 +24,8 @@ Production PostgreSQL deployment itself was not executed here (no Postgres/Docke
   2. runs `prisma db push` over the UNPOOLED connection,
   3. runs `prisma/deploy-db.ts` — ensures the `booking_no_overlap_active` tsrange exclusion constraint, and seeds ONLY if the database is empty,
   4. runs `next build`.
-  All steps are idempotent, so redeploys are safe and never wipe data.
+  Catalog sync preserves owner-created venues and never deletes a venue with
+  any booking, including cancelled bookings. If a sample or stale Google venue
+  has booking history, the build fails and reports its slug; resolve that case
+  through a reviewed data plan, not by deleting booking records. Confirm a
+  backup and rollback plan before changing the production catalog.
