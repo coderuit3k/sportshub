@@ -3,11 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// Roles/status are Strings for portability between SQLite (dev) and PostgreSQL (prod).
+// Roles/status remain Strings validated in the service layer.
 // Valid values are enforced in the service layer + Zod schemas. See docs/database.md.
 
 model User {

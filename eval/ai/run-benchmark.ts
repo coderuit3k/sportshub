@@ -136,7 +136,7 @@ async function main() {
   const summary = {
     ranAt: new Date().toISOString(),
     model: "scripted (protocol replay) — measures tools/orchestration, NOT real-LLM quality",
-    fixture: "tests/ai/fixtures.ts (SQLite throwaway DB)",
+    fixture: "tests/ai/fixtures.ts (PostgreSQL isolated test schema)",
     total: results.length,
     passed: results.filter((r) => r.pass).length,
     dev: bySplit("dev"),

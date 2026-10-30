@@ -1,7 +1,7 @@
 /**
  * Fixture database for the AI-assistant integration tests.
  *
- * A throwaway SQLite database is created per test FILE (prisma db push
+ * An isolated PostgreSQL schema is created per test FILE (prisma db push
  * against the repo's own schema), then seeded with a small, fully
  * hand-computed fixture set. Expected values in the tests are written
  * as literals from THIS design — never derived by calling the code
@@ -25,11 +25,8 @@
  *   a prompt-injection review, a price/cleanliness review.
  * - In-app reviews on v_thuduc: 1 organic + 1 seed (stats separation).
  */
-import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
+import { createTestDb } from "../db";
 import { BudgetCounter, type ToolContext } from "@/lib/ai/types";
 import { fromWallTime } from "@/lib/time/tz";
 
@@ -63,86 +60,18 @@ export interface AiFixtureDb {
   cleanup: () => Promise<void>;
 }
 
-export async function createAiFixtureDb(): Promise<AiFixtureDb> {
-  const dir = mkdtempSync(path.join(tmpdir(), "sportshub-ai-test-"));
-  const dbPath = path.join(dir, "test.db");
-  const url = `file:${dbPath}`;
-  execSync("npx prisma db push --skip-generate --schema prisma/schema.prisma", {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "pipe",
-  });
-  const db = new PrismaClient({ datasources: { db: { url } } });
-  await seedAiFixtures(db);
-  return {
-    db,
-    cleanup: async () => {
-      await db.$disconnect().catch(() => undefined);
-      rmSync(dir, { recursive: true, force: true });
-    },
-  };
+export async function createAiFixtureDb(connectionString?: string): Promise<AiFixtureDb> {
+  const fixture = await createTestDb(connectionString);
+  try {
+    await seedAiFixtures(fixture.db);
+    return fixture;
+  } catch (error) {
+    await fixture.cleanup();
+    throw error;
+  }
 }
 
-/**
- * PostgreSQL variant (production-database behaviour tests): pushes the
- * repo's postgresql schema into the given database and seeds the SAME
- * fixtures. Gated by the caller on AI_TEST_PG_URL — never run against
- * anything but a throwaway test database.
- */
-export async function createAiFixturePgDb(connectionString: string): Promise<AiFixtureDb> {
-  execSync("npx prisma db push --skip-generate --schema prisma/schema.postgresql.prisma", {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: connectionString },
-    stdio: "pipe",
-  });
-  // The app's generated client is SQLite-flavoured and rejects
-  // postgresql:// URLs, so generate a PG-flavoured client into a temp
-  // output (same trick the production build uses, without overwriting
-  // the app client) and load it dynamically.
-  const dir = mkdtempSync(path.join(tmpdir(), "sportshub-pg-client-"));
-  const clientOut = path.join(dir, "client");
-  // The schema copy must live INSIDE the project tree: Prisma infers
-  // the project root from the schema's directory, and a schema in /tmp
-  // makes generate try (and fail) to auto-install Prisma at "/".
-  const schemaPath = path.join(process.cwd(), "prisma/.pg-test-schema.prisma");
-  const { readFileSync, writeFileSync, rmSync: rmFileSync } = await import("node:fs");
-  const pgSchema = readFileSync(path.join(process.cwd(), "prisma/schema.postgresql.prisma"), "utf8").replace(
-    'provider = "prisma-client-js"',
-    `provider = "prisma-client-js"\n  output   = "${clientOut}"`,
-  );
-  writeFileSync(schemaPath, pgSchema);
-  const removeSchemaCopy = () => rmFileSync(schemaPath, { force: true });
-  execSync(`npx prisma generate --schema ${schemaPath}`, {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      DATABASE_URL: connectionString,
-      // Point Prisma at the engines already in node_modules: on some
-      // networks the engine download from binaries.prisma.sh aborts,
-      // and everything needed is already on disk (repo history).
-      PRISMA_QUERY_ENGINE_LIBRARY: path.join(
-        process.cwd(),
-        "node_modules/@prisma/engines/libquery_engine-debian-openssl-3.0.x.so.node",
-      ),
-      PRISMA_SCHEMA_ENGINE_BINARY: path.join(
-        process.cwd(),
-        "node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x",
-      ),
-    },
-    stdio: "pipe",
-  });
-  removeSchemaCopy();
-  const pgModule = (await import(clientOut)) as { PrismaClient: typeof PrismaClient };
-  const db = new pgModule.PrismaClient({ datasources: { db: { url: connectionString } } });
-  await seedAiFixtures(db as unknown as PrismaClient);
-  return {
-    db: db as unknown as PrismaClient,
-    cleanup: async () => {
-      await db.$disconnect().catch(() => undefined);
-      rmSync(dir, { recursive: true, force: true });
-    },
-  };
-}
+export const createAiFixturePgDb = createAiFixtureDb;
 
 async function seedAiFixtures(db: PrismaClient): Promise<void> {
 

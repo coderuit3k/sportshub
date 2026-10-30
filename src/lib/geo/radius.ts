@@ -77,15 +77,15 @@ export async function findVenuesWithinRadius(
   const sql = `
     SELECT v.id AS "venueId", v.slug, v.name, v.district, v.address,
            v.latitude, v.longitude,
-           ST_Distance(ST_SetSRID(ST_MakePoint(v.longitude, v.latitude), 4326)::geography,
-                       ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) / 1000.0 AS "distanceKm",
+           public.ST_Distance(public.ST_SetSRID(public.ST_MakePoint(v.longitude, v.latitude), 4326)::public.geography,
+                       public.ST_SetSRID(public.ST_MakePoint($1, $2), 4326)::public.geography) / 1000.0 AS "distanceKm",
            v."googleRating", v."googleRatingCount", v."ratingAvg", v."ratingCount"
       FROM "Venue" v
      WHERE v.status = 'APPROVED'
        AND v.latitude IS NOT NULL
        AND v.longitude IS NOT NULL
-       AND ST_DWithin(ST_SetSRID(ST_MakePoint(v.longitude, v.latitude), 4326)::geography,
-                      ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
+       AND public.ST_DWithin(public.ST_SetSRID(public.ST_MakePoint(v.longitude, v.latitude), 4326)::public.geography,
+                      public.ST_SetSRID(public.ST_MakePoint($1, $2), 4326)::public.geography, $3)
        ${sportClause}
      ORDER BY "distanceKm" ASC
      LIMIT $${params.length}

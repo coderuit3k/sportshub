@@ -6,6 +6,13 @@ import { ensureRealCatalog } from "./real-catalog";
 const prisma = new PrismaClient();
 
 async function main() {
+  let db: URL;
+  try { db = new URL(process.env.DATABASE_URL ?? ""); }
+  catch { throw new Error("DATABASE_URL must be configured for PostgreSQL dev/test seed"); }
+  if (process.env.ALLOW_DESTRUCTIVE_SEED !== "true" || process.env.NODE_ENV === "production"
+    || !["postgresql:", "postgres:"].includes(db.protocol) || !/\/(?:[a-zA-Z0-9_]+)_(?:test|dev)$/.test(db.pathname)) {
+    throw new Error("Destructive seed requires explicit opt-in and a PostgreSQL _test or _dev database");
+  }
   console.log("Seeding SportsHub (dev accounts + sports; venues converge to the REAL Google catalog at the end)...");
   // Clean (dev only, idempotent re-seed)
   await prisma.auditLog.deleteMany();
