@@ -217,8 +217,10 @@ async function main() {
       const v = d.validation;
       const toolErrs = d.toolCalls.filter((t) => t.status !== "ok").map((t) => `${t.tool}:${t.status}${t.errorCode ? "/" + t.errorCode : ""}`);
       const rejection = v?.lastRejection?.problems.length ? " · last rejection: " + v.lastRejection.problems.join("; ") : "";
+      const schema = v?.lastSchemaRejection;
+      const schemaRejection = schema ? ` · last protocol rejection: ${schema.kind}${schema.issues.map((issue) => ` ${issue.path}:${issue.code}`).join(",")}` : "";
       return [
-        `- ${r.id} (${r.outcome}): budget ${d.budgetUsed}/${d.budgetLimit} (${d.budgetOutcome}) · repairs ${v?.repairCount ?? "?"} · schemaValid ${v?.schemaValid} · referencesValid ${v?.referencesValid} · grounding ${v?.grounding.status}${v && v.grounding.problems.length ? " — " + v.grounding.problems.join("; ") : ""}${rejection}${toolErrs.length ? " · tool errors: " + toolErrs.join(", ") : ""}`,
+        `- ${r.id} (${r.outcome}): budget ${d.budgetUsed}/${d.budgetLimit} (${d.budgetOutcome}) · repairs ${v?.repairCount ?? "?"} · schemaValid ${v?.schemaValid} · referencesValid ${v?.referencesValid} · grounding ${v?.grounding.status}${v && v.grounding.problems.length ? " — " + v.grounding.problems.join("; ") : ""}${rejection}${schemaRejection}${toolErrs.length ? " · tool errors: " + toolErrs.join(", ") : ""}`,
       ];
     });
   const md = [

@@ -82,6 +82,13 @@ repeated in tool warnings and UI labels).
 
 ## Decision policy (system prompt `sportshub-assistant-v10`)
 
+Protocol diagnostics retain `lastSchemaRejection` separately from the last
+rejected final answer: JSON/schema category and up to eight schema issue
+paths/codes, without raw model text or rejected values. A protocol parse
+failure resets `schemaValid`; a parsed final answer sets it true. A successful
+repair can coexist with an earlier schema rejection. Real-model report
+diagnostics include this information.
+
 Prompt v10 (2026-10-28) replaced the numbered decision rules with a
 task-first routing guide (prompt §§1–9: pick the tool by the outcome
 the user needs, ask only for inputs that actually block the current

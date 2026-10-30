@@ -612,6 +612,35 @@ describe("orchestrator — safety regressions from real-model gap audit", () => 
   });
 });
 
+describe("orchestrator — protocol rejection diagnostics", () => {
+  const good = J({ kind: "final", answer: { type: "clarification", message: "Bạn muốn tìm sân nào?",
+    venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } });
+
+  it("retains schema issue codes after a successful repair without retaining raw values", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Tìm sân", db, cfg: cfg(),
+      model: scripted([J({ kind: "final", answer: { type: "PRIVATE_PAYLOAD" } }), good]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.schemaValid).toBe(true);
+    expect(res.trace.validation.lastSchemaRejection?.kind).toBe("schema");
+    expect(res.trace.validation.lastSchemaRejection?.issues).toContainEqual({ path: "answer.type", code: "invalid_enum_value" });
+    expect(JSON.stringify(res.trace.validation)).not.toContain("PRIVATE_PAYLOAD");
+  });
+
+  it("marks the latest reply invalid when a valid draft is followed by malformed JSON", async () => {
+    __resetConversations();
+    const bad = J({ kind: "final", answer: { type: "limited_answer", message: "Có 999 sân.",
+      venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } });
+    const res = await runAssistantTurn({ userMessage: "Tìm sân", db, cfg: cfg({ maxModelRounds: 2 }),
+      model: scripted([bad, "PRIVATE_PAYLOAD not JSON"]) });
+    expect(res.trace.validation.fallbackUsed).toBe(true);
+    expect(res.trace.validation.schemaValid).toBe(false);
+    expect(res.trace.validation.lastSchemaRejection).toEqual({ kind: "json", issues: [] });
+    expect(res.trace.validation.lastRejection?.message).toContain("999");
+    expect(JSON.stringify(res.trace.validation)).not.toContain("PRIVATE_PAYLOAD");
+  });
+});
+
 describe("orchestrator — operating hours grounding (AI-039)", () => {
   const hoursAnswer = (message: string, venueIds: string[] = []) => J({
     kind: "final", answer: { type: "limited_answer", message, venueIds,

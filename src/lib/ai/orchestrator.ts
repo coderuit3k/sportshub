@@ -261,6 +261,8 @@ export interface AssistantTrace {
      * so a fallback can be attributed to the exact failed check from
      * the trace alone; null when no final was ever rejected. */
     lastRejection: { problems: string[]; message: string } | null;
+    /** Latest protocol parse failure; paths/codes only, never raw model text. */
+    lastSchemaRejection: { kind: "json" | "schema"; issues: { path: string; code: string }[] } | null;
     /** Whether the FIRST executed tool call of the turn succeeded
      * without an input error; null when no tool was called. */
     firstAttemptToolSuccess: boolean | null;
@@ -865,6 +867,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
       grounding: { status: "not_assessed", problems: [] },
       repairCount: 0,
       lastRejection: null,
+      lastSchemaRejection: null,
       firstAttemptToolSuccess: null,
     },
     tokens: null,
@@ -952,7 +955,11 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     let reply: z.infer<typeof ModelReply>;
     try {
       reply = ModelReply.parse(extractJsonObject(completion.text));
-    } catch {
+    } catch (error) {
+      trace.validation.schemaValid = false;
+      trace.validation.lastSchemaRejection = error instanceof z.ZodError
+        ? { kind: "schema", issues: error.issues.slice(0, 8).map((issue) => ({ path: issue.path.join("."), code: issue.code })) }
+        : { kind: "json", issues: [] };
       messages.push({
         role: "user",
         content: "Phản hồi của bạn không đúng định dạng JSON của giao thức. Hãy trả về đúng MỘT đối tượng JSON theo giao thức, không thêm chữ nào khác.",
