@@ -50,6 +50,7 @@
   "overrides": {
     "postcss": "$postcss",
     "sharp": "0.35.5",
+    "@swc/helpers": "0.5.23",
     "deepmerge-ts": "8.0.2"
   },
   "prisma": {

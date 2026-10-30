@@ -7,12 +7,14 @@ merges are held until patched dependencies pass the same functional gates.
 |---|---|---|
 | Zod | 4.6.7 | Public JSON Schema generation; two-argument records; patch fields remove defaults; AI/RBAC/input regression suite |
 | Vitest | 5.0.5 | Node >=22.12; Oxc JSX automatic for TSX tests; PostgreSQL suite |
-| PostCSS | 8.5.32 | Override applies to Next's transitive copy; production browser build |
+| Build dependencies | PostCSS8.5.32 / SWC helpers0.5.23 | Overrides apply to Next; valid npm10/11 peer tree and browser build |
 | sharp | 0.35.5 | Override; native PNG smoke and browser image tests |
 | deepmerge-ts | 8.0.2 | Override; Prisma generate/schema push/test setup with Prisma 6.19.3 |
 
 Prisma and @prisma/client stay exactly 6.19.3. Next stays on major15. No audit
-exception or suppressed advisory is introduced. CI runs `npm audit --audit-level=high`.
+exception or suppressed advisory is introduced. CI checks `npm ls --all` and
+`npm audit --audit-level=high`. The SWC helper pin prevents npm11 deduping a
+version below next-intl's compiler peer requirement; lock generation uses npm10.
 The lockfile pins resolved artifacts; overrides must be reviewed when parent
 packages are upgraded rather than assumed compatible indefinitely.
 
