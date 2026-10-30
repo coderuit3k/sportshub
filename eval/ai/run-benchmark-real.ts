@@ -102,6 +102,7 @@ async function main() {
     expectationMatch: boolean; expectationNotes: string[];
     answerType: string; toolsUsed: string[]; latencyMs: number;
     tokens: { input: number; output: number } | null; estimatedCostUsd: number | null;
+    turns: { latencyMs: number; tokens: { input: number; output: number } | null; estimatedCostUsd: number | null }[];
     fallbackUsed: boolean;
     diagnostics: CaseDiagnostics | null;
   }[] = [];
@@ -114,9 +115,12 @@ async function main() {
     let conversationId: string | undefined;
     let last: AssistantTurnResult | null = null;
     const toolsUsed: string[] = [];
+    const turns: { latencyMs: number; tokens: { input: number; output: number } | null; estimatedCostUsd: number | null }[] = [];
     try {
       for (const turn of c.turns) {
+        const turnStarted = Date.now();
         last = await runAssistantTurn({ conversationId, userMessage: turn.user, model, db, cfg });
+        turns.push({ latencyMs: Date.now() - turnStarted, tokens: last.trace.tokens, estimatedCostUsd: last.trace.estimatedCostUsd });
         conversationId = last.conversationId;
         toolsUsed.push(...last.trace.toolCalls.map((t) => t.tool));
         for (const pattern of c.expect.messageMustNotMatch ?? []) {
@@ -156,13 +160,16 @@ async function main() {
           answerMessage: last.answer.message,
         }
       : null;
+    const tokensComplete = turns.length === c.turns.length && turns.every((turn) => turn.tokens != null);
+    const costComplete = turns.length === c.turns.length && turns.every((turn) => turn.estimatedCostUsd != null);
     const row = {
       id: c.id, split: c.split, category: c.category,
       safetyPass, outcome, failures,
       expectationMatch, expectationNotes: notes,
       answerType, toolsUsed, latencyMs,
-      tokens: last?.trace.tokens ?? null,
-      estimatedCostUsd: last?.trace.estimatedCostUsd ?? null,
+      tokens: tokensComplete ? turns.reduce((sum, turn) => ({ input: sum.input + turn.tokens!.input, output: sum.output + turn.tokens!.output }), { input: 0, output: 0 }) : null,
+      estimatedCostUsd: costComplete ? turns.reduce((sum, turn) => sum + turn.estimatedCostUsd!, 0) : null,
+      turns,
       fallbackUsed,
       diagnostics,
     };
@@ -174,7 +181,9 @@ async function main() {
   const paymentsAfter = await db.payment.count();
   const noWrite = bookingsBefore === bookingsAfter && paymentsBefore === paymentsAfter;
   const latencies = results.map((r) => r.latencyMs).sort((a, b) => a - b);
-  const totalCost = results.reduce((s, r) => s + (r.estimatedCostUsd ?? 0), 0);
+  const totalCost = results.every((r) => r.estimatedCostUsd != null)
+    ? results.reduce((s, r) => s + r.estimatedCostUsd!, 0)
+    : null;
   const outcomes = {
     success: results.filter((r) => r.outcome === "success").length,
     partial: results.filter((r) => r.outcome === "partial").length,

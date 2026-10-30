@@ -497,6 +497,7 @@ function collectFactNumbers(
 /** Numbers the prose states, with dates/times/ordinals stripped. */
 function extractProseNumbers(message: string): { value: number; isPercent: boolean }[] {
   const cleaned = message
+    .replace(/\[ev:[^\]]+\]/g, " ") // evidence IDs are checked as references, not prose
     .replace(/\d{4}-\d{2}-\d{2}/g, " ") // ISO dates
     // dd/mm(/yyyy), 24/7 — but NOT the tail of a decimal fraction:
     // in "4.6/5" the "6/5" is a rating denominator, and stripping it

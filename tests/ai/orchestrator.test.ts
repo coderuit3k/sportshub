@@ -287,6 +287,62 @@ describe("orchestrator", () => {
 });
 
 describe("orchestrator — grounding (audit A)", () => {
+  it("accepts a registered citation whose ID contains digits (AI-022)", async () => {
+    __resetConversations();
+    const evidenceId = "cmvswtmb5000mjxnx3q1ja7yh";
+    await db.googleReview.create({ data: {
+      id: evidenceId, venueId: "v_thuduc", authorName: "Test", rating: 5,
+      relativeTime: "1 tháng trước", text: "Ánh sáng tốt và dễ nhìn cầu.",
+    } });
+    try {
+      const model = scripted([
+        J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+        J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], aspects: ["lighting"], limit: 12 } }),
+        J({ kind: "final", answer: { type: "review_insight", message: `Ánh sáng tốt [ev:${evidenceId}].`,
+          venueIds: ["v_thuduc"], evidenceIds: [evidenceId], optionIds: [], handoffId: null, missingFields: [] } }),
+      ]);
+      const res = await runAssistantTurn({ userMessage: "Sân Minh Khai sáng không?", model, db, cfg: cfg({ maxModelRounds: 4 }) });
+      expect(res.trace.validation.answerValid).toBe(true);
+      expect(res.trace.validation.referencesValid).toBe(true);
+      expect(res.trace.validation.grounding.status).toBe("passed");
+      expect(res.answer.evidence.map((e) => e.evidenceId)).toContain(evidenceId);
+    } finally {
+      await db.googleReview.delete({ where: { id: evidenceId } });
+    }
+  });
+
+  it("still rejects an invented digit-bearing citation as an unknown reference", async () => {
+    __resetConversations();
+    const fakeId = "cmvswtmb5000mjxnx3q1ja7yh_fake";
+    const bad = J({ kind: "final", answer: { type: "review_insight", message: `Ánh sáng tốt [ev:${fakeId}].`,
+      venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } });
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+      J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], aspects: ["lighting"], limit: 6 } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai sáng không?", model, db, cfg: cfg({ maxModelRounds: 4 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.referencesValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain(`unknown evidence ${fakeId}`);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).not.toContain("số 5000");
+  });
+
+  it("still checks a factual number next to a valid citation", async () => {
+    __resetConversations();
+    const bad = J({ kind: "final", answer: { type: "review_insight", message: "Ánh sáng tốt [ev:gr_light_pos], giá 5000 đồng.",
+      venueIds: ["v_thuduc"], evidenceIds: ["gr_light_pos"], optionIds: [], handoffId: null, missingFields: [] } });
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+      J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], aspects: ["lighting"], limit: 6 } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai sáng không?", model, db, cfg: cfg({ maxModelRounds: 4 }) });
+    expect(res.trace.validation.referencesValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("failed");
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("số 5000");
+  });
+
   it("blocks a fabricated price/count next to a VALID evidence id", async () => {
     __resetConversations();
     const bad = J({
