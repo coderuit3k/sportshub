@@ -125,6 +125,14 @@ Trust model (enforced in code, not just the prompt):
   **shortlist auto-fill** (options verified by tools reach the UI even
   when the model forgets to reference them), and a prescribed
   **handoff recovery** (profile lookup → one retry).
+- Audit hardening (prompt v7): **grounding checks** reject prose
+  numbers with no tool fact behind them and stop citations being
+  used across venues/aspects; conversations are **scoped to a
+  server-derived principal** (session user or signed anonymous
+  cookie) with signed client-context tokens — a conversationId alone
+  grants nothing; composite comparisons report per-venue outcomes
+  (`unknown_due_to_error` / `price_unavailable`) instead of turning
+  tool errors into "no slots". See `docs/ai-evaluation.md` §6.
 - Evaluation: scripted benchmark **50/50** (tools/protocol/no-write
   invariant) and a 10-case **live production battery** (real model,
   real data) whose findings drove the guards above — see

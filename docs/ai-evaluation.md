@@ -153,9 +153,9 @@ the live report file above.
 | 0 hard-constraint violations on demo set | ✅ held on scripted benchmark |
 | Price/schedule/count exactness on standard fixtures | ✅ 22/22 integration + schedule cases |
 | Reference/simulated labels on all price/schedule outputs | ✅ tool warnings + UI labels + handoff labels (asserted in tests) |
-| Citation support ≥ 95% | ✅ by construction: server validates every cited id against the evidence pack and hydrates quotes from the DB; a fabricated id cannot render (tested) |
-| Citation coverage ≥ 95% | ✅ live battery case 4: 5/5 cited evidence items validated against tool results (server rejects fabricated ids by construction) |
-| E2E task success ≥ 90% on the initial benchmark | ✅ 100% scripted; live battery 2026-10-28: 7 PASS / 3 PARTIAL / 0 FAIL on 10 real-model cases (PARTIALs fixed in prompt v6, see §5) |
+| Citation support ≥ 95% | ⚠️ NOT MEASURED at claim level (corrected 2026-10-28): what is enforced and tested is *reference integrity* (every cited id exists in the tool-result registry; quotes hydrate from the DB) plus, since the hardening round, *citation scope* (cited evidence must belong to the answer's venue and overlap the citing sentence's aspects). "5 valid evidence ids" is a reference-integrity observation, NOT a support measurement. Claim-level support (does the quote actually entail the claim) has no automated measurement yet → this gate is OPEN, not passed |
+| Citation coverage ≥ 95% | ⚠️ NOT MEASURED (corrected 2026-10-28): no instrument counts "claims that need a source" vs "claims carrying an adequate source". The live battery case-4 observation (5/5 cited items reference-valid) does not measure coverage → gate OPEN |
+| E2E task success ≥ 90% on the initial benchmark | Scripted benchmark 100% (protocol/orchestration, NOT model quality). Real-model: live battery 2026-10-28: 7 PASS / 3 PARTIAL / 0 FAIL on 10 hand-written cases (PARTIALs fixed in prompt v6, see §5) — a small hand-checked sample, not a ≥90% measurement over the 50-case set. The real-model runner now classifies outcomes as success / partial / safe_fallback / fail and never counts an honest fallback as success; a full 50-case real-model run remains UNMEASURED (needs local AWS credentials) |
 | Ambiguous/missing-data cases handled | ✅ scripted + live (clarification, scope refusal, budget honesty, out-of-catalog geography) |
 | p95 ≤ 12 s for the normal read flow | ❌ not met live: simple turns 5.6–9.7 s, but the full search+compare turn takes ~33–36 s (many model rounds, first-attempt tool errors self-corrected) |
 
@@ -177,3 +177,39 @@ proposed p95 ≤ 12 s). `run-benchmark-real.ts` over all 50 cases is
 still unrun (it needs AWS credentials in the local environment);
 the 10-case live battery stands as the real-model measurement
 until then.
+
+### 6. Hardening round — 2026-10-28 (audit fixes, branch only, not deployed)
+
+A security/correctness audit of the shipped assistant produced
+findings A–J; the fixes below are implemented in code with regression
+tests on `feat/ai-assistant`. They have NOT been deployed or merged,
+and the real-model battery has NOT been re-run against them (no AWS
+credentials in this environment) — quality claims for the new build
+are therefore limited to the scripted/unit/integration layers.
+
+| Finding | Fix | Proof |
+|---|---|---|
+| A. Validation checked ids, not claim content | Server-side grounding checks over the final prose: every number must trace to a tool fact (venue cards, options, comparison rows, handoffs, **registered stats results**); price provenance labels cannot be upgraded in prose ("giá chính thức"); cited evidence must match the answer's venue and the citing sentence's aspects. Trace now separates schemaValid / referencesValid / grounding | orchestrator tests: fabricated price+count beside a VALID evidence id → blocked (referencesValid=true, grounding=failed); cross-venue citation → blocked; staff review cited for a cleanliness claim → blocked; all-facts final → grounding=passed |
+| B. ConversationId was the only access control | Principal-scoped conversation store (session user, or HMAC-signed anonymous cookie); client-carried context honoured only with a signed context token binding principal+conversation+state+history-hash; unverified context is ignored wholesale | session unit tests (tamper/expiry/replay) + orchestrator tests (other principal → fresh conversation, no state/history leak) |
+| C. compare turned sub-tool errors into "no available option" | Per-venue QuoteOutcome (available / unavailable / price_unavailable / unknown_due_to_error / not_checked) with errorCode + checkedAt; envelope degrades to `partial`; `no_available_option` only from a completed quote query; profile failure of one venue degrades instead of sinking the comparison | integration tests: budget-exhausted quote → unknown + partial; no-price-rules facility → price_unavailable (never 0); one bad profile → partial; locked slot → genuinely unavailable |
+| D. Failed evidence inputs burned evidence rounds | Evidence rounds count only executions that gathered data (status ≠ error); failed attempts stay bounded by the total tool budget + model rounds | orchestrator test: INVALID_INPUT stats call, then valid stats, within maxEvidenceRounds=0; the *next* gathering call is refused |
+| E. Prompt listed only tool field names | Tool specs are generated from the runtime Zod schemas (types, required, enums, bounds, nested objects, hand-written check messages); prompt bumped to `sportshub-assistant-v7` | prompts unit tests pin enums/bounds/required/nesting |
+| F. Citation `#review-<id>` anchors did not exist | Google review articles on the venue page now render `id="review-<id>"` + `scroll-mt-24`; in-app evidence (not rendered as articles) no longer fabricates an anchor — its citation target is the venue page itself | integration test asserts per-source targets; Playwright spec `tests/e2e/assistant-citation.spec.ts` verifies the anchor element exists in the browser and the assistant citation link lands on it |
+| G. Real-model runner counted honest fallback as hard-pass | Runner classifies per-case outcome success / partial / safe_fallback / fail; safety and task outcome are separate axes in the report and the gate | code in `eval/ai/run-benchmark-real.ts`; a re-run is still UNMEASURED (credentials) |
+| H. Citation conclusions overstated | Gate rows above corrected: reference integrity ≠ support ≠ coverage; support/coverage at claim level are OPEN/unmeasured | this table |
+| I. Latency | Schema-complete tool specs + first-attempt-success tracing attack the largest measured waste (input-error repair rounds). No new latency number is claimed: the ~33–36 s full-turn figure from §5 stands until a post-hardening live run measures otherwise | trace field `firstAttemptToolSuccess`, `repairCount` |
+| J. Freshness / deadlines / trace completeness | Slot-defining state changes (date, start, duration, sport, district, budget, venue set) invalidate registry options/handoffs/comparison; token/cost accounting is centralized in `finish()` so every exit path records usage; per-turn token budget (`AI_MAX_TOTAL_TOKENS`, checked between rounds — one-round overshoot possible) and per-call output cap (`AI_MAX_OUTPUT_TOKENS`); tool-timeout timers are cleared after the race | orchestrator tests: stale option after a 17:00→20:00 change is rejected; provider failure after a tool call still records tokens + cost; token budget stops further rounds |
+
+Residual limits, stated plainly: (1) grounding checks bound numeric
+claims, provenance labels and citation scope — they do NOT decide
+semantic entailment of arbitrary prose; a number-free false claim
+can still pass automated checks, which is why review answers are
+quote-first with inline citations and the trace never claims more
+than `grounding.status`. (2) Venue cards/evidence in the registry
+can be up to a conversation old; slot-bearing artifacts are
+invalidated on state change and handoffs re-quote freshly, but a
+review deleted mid-conversation is only detected on re-fetch.
+(3) The request deadline is enforced between rounds; a single model
+call is bounded by `AI_MODEL_TIMEOUT_MS` with provider abort, and a
+tool by `AI_TOOL_TIMEOUT_MS` via Promise.race — an underlying DB
+query is not cancelled, only abandoned.

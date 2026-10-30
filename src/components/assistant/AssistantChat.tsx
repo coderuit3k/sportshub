@@ -42,7 +42,10 @@ export default function AssistantChat({ available }: { available: boolean }) {
   const contextRef = useRef<{
     state: AssistantAnswer["appliedContext"] | null;
     history: { role: "user" | "assistant"; content: string }[];
-  }>({ state: null, history: [] });
+    /** Signed token binding state+history to this browser's
+     * principal; the server ignores carried context without it. */
+    contextToken: string | null;
+  }>({ state: null, history: [], contextToken: null });
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -69,20 +72,30 @@ export default function AssistantChat({ available }: { available: boolean }) {
           conversationId,
           message,
           ...(contextRef.current.state
-            ? { state: contextRef.current.state, history: contextRef.current.history }
+            ? {
+                state: contextRef.current.state,
+                history: contextRef.current.history,
+                contextToken: contextRef.current.contextToken ?? undefined,
+              }
             : {}),
         }),
       });
-      const json = (await res.json()) as { conversationId?: string; answer?: AssistantAnswer };
+      const json = (await res.json()) as {
+        conversationId?: string;
+        answer?: AssistantAnswer;
+        history?: { role: "user" | "assistant"; content: string }[];
+        contextToken?: string;
+      };
       if (json.conversationId) setConversationId(json.conversationId);
       if (res.ok && json.answer) {
+        // Carry exactly what the SERVER issued (state, history
+        // summaries and the signed context token) — the next turn's
+        // context is verified against these, not against anything
+        // the client composed itself.
         contextRef.current = {
           state: json.answer.appliedContext,
-          history: [
-            ...contextRef.current.history,
-            { role: "user" as const, content: message.slice(0, 2000) },
-            { role: "assistant" as const, content: `[${json.answer.type}] ${json.answer.message}`.slice(0, 2000) },
-          ].slice(-24),
+          history: json.history ?? contextRef.current.history,
+          contextToken: json.contextToken ?? null,
         };
       }
       const answer: AssistantAnswer =
@@ -269,9 +282,14 @@ function AnswerView({
                 </summary>
                 <p className="mt-2 whitespace-pre-line border-t pt-2 text-sm leading-relaxed text-slate-600">{ev.fullText}</p>
                 <p className="mt-1 text-xs text-slate-400">— {ev.authorLabel}</p>
-                <Link href={ev.citationTarget} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+                {/* Plain anchor, deliberately NOT a Next <Link>: the
+                    target carries a #review-<id> fragment, and only a
+                    full document navigation makes the browser scroll
+                    to the anchored review — SPA pushState navigation
+                    lands the user at the top of the venue page. */}
+                <a href={ev.citationTarget} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
                   {t("viewAtVenue")} <ExternalLink className="h-3 w-3" />
-                </Link>
+                </a>
               </details>
             ))}
           </div>

@@ -34,12 +34,15 @@ import type { ChatModel, ModelMessage } from "./provider";
 import { ProviderError } from "./provider";
 import { buildSystemPrompt, PROMPT_VERSION, ANSWER_SCHEMA_VERSION } from "./prompts";
 import { loadAiConfig, type AiConfig } from "./config";
+import { clauseAspects } from "./aspects";
+import { foldVi } from "./text";
 import { BUSINESS_TZ, fromWallTime, todayDateISO } from "@/lib/time/tz";
 import type { VenueCardData } from "./tools/shared";
 import type { EvidenceItem } from "./tools/review-evidence";
 import type { BookableOption } from "./tools/bookable-options";
 import type { VenueComparison } from "./tools/compare";
 import type { BookingHandoff } from "./tools/handoff";
+import type { ReviewStatsData } from "./tools/review-stats";
 
 /* ------------------------- conversation state ------------------------ */
 
@@ -67,11 +70,23 @@ interface RuntimeRegistry {
   options: Map<string, BookableOption>;
   handoffs: Map<string, BookingHandoff>;
   comparison: VenueComparison | null;
+  /** Latest review-statistics result per venue — the ONLY source
+   * from which count claims in prose may be grounded. */
+  stats: Map<string, ReviewStatsData["venues"][number]>;
+  /** Numbers the tools themselves were asked about (appliedFilters:
+   * budgets, durations, limits) — legitimate prose facts too, e.g.
+   * "vượt ngân sách tổng 150.000đ" restates the checked budget. */
+  factNumbers: Set<number>;
   warnings: string[];
 }
 
 interface Conversation {
   id: string;
+  /** Owner scope of this conversation: a server-derived principal
+   * ("user:<id>" or "anon:<uuid>"). A conversationId alone never
+   * grants access — a stored conversation is only returned to the
+   * principal that created it. */
+  principal: string;
   state: ConversationState;
   history: { role: "user" | "assistant"; content: string }[];
   registry: RuntimeRegistry;
@@ -97,22 +112,32 @@ export interface ClientConversationContext {
   history?: { role: "user" | "assistant"; content: string }[];
 }
 
+/** Default scope for internal/test callers that pass no principal.
+ * HTTP callers always pass a server-derived principal (see route). */
+export const UNSCOPED_PRINCIPAL = "unscoped";
+
 function getOrCreateConversation(
   id: string | undefined,
   clientContext?: ClientConversationContext,
+  principal: string = UNSCOPED_PRINCIPAL,
 ): Conversation {
   const nowMs = Date.now();
   for (const [key, c] of conversations) {
     if (nowMs - c.updatedAt > CONVERSATION_TTL_MS) conversations.delete(key);
   }
-  if (id && conversations.has(id)) {
-    const c = conversations.get(id)!;
+  // Ownership scope: the map is keyed by principal + id, so a caller
+  // presenting somebody else's conversationId simply finds nothing —
+  // no state, history or registry of the owner can leak, and the
+  // caller transparently starts a fresh conversation of their own.
+  const key = id ? `${principal}:${id}` : null;
+  if (key && conversations.has(key)) {
+    const c = conversations.get(key)!;
     c.updatedAt = nowMs;
     return c;
   }
   if (conversations.size >= MAX_CONVERSATIONS) {
-    const oldest = [...conversations.values()].sort((a, b) => a.updatedAt - b.updatedAt)[0];
-    if (oldest) conversations.delete(oldest.id);
+    const oldest = [...conversations.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)[0];
+    if (oldest) conversations.delete(oldest[0]);
   }
   const parsedState = clientContext?.state
     ? ConversationState.safeParse(clientContext.state)
@@ -125,15 +150,18 @@ function getOrCreateConversation(
     .slice(-24)
     .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
   const c: Conversation = {
-    // A client-carried conversation keeps its id across instances;
-    // without client context an unknown id still starts fully fresh.
+    // A client-carried conversation keeps its id across instances —
+    // but ONLY when the route has verified the signed context token
+    // binding that id + context to this principal. Without verified
+    // client context an unknown id still starts fully fresh.
     id: clientContext && id ? id : randomUUID(),
+    principal,
     state: parsedState?.success ? parsedState.data : ConversationState.parse({}),
     history,
-    registry: { venues: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, warnings: [] },
+    registry: { venues: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, stats: new Map(), factNumbers: new Set(), warnings: [] },
     updatedAt: nowMs,
   };
-  conversations.set(c.id, c);
+  conversations.set(`${principal}:${c.id}`, c);
   return c;
 }
 
@@ -200,7 +228,40 @@ export interface AssistantTrace {
   budgetLimit: number;
   budgetOutcome: "ok" | "exhausted" | "request_timeout";
   evidenceRoundsUsed: number;
-  validation: { answerValid: boolean; repaired: boolean; fallbackUsed: boolean };
+  validation: {
+    answerValid: boolean;
+    repaired: boolean;
+    fallbackUsed: boolean;
+    /** The final protocol reply parsed against the answer schema. */
+    schemaValid: boolean;
+    /** Every referenced venue/evidence/option/handoff id existed in
+     * the tool-result registry (reference integrity — NOT claim
+     * truth; see grounding). */
+    referencesValid: boolean;
+    /**
+     * Grounding checks over the prose message, kept deliberately
+     * separate from reference integrity:
+     * - "passed": numeric claims matched server facts, cited
+     *   evidence matched the claim's venue/aspect scope, and no
+     *   provenance label was upgraded in prose.
+     * - "failed": at least one check failed (the answer was then
+     *   repaired or replaced by the fallback).
+     * - "not_assessed": no final answer reached grounding checks.
+     * Semantic entailment of free prose is NOT fully decided by
+     * these checks — see docs/ai-assistant.md (grounding limits).
+     */
+    grounding: { status: "passed" | "failed" | "not_assessed"; problems: string[] };
+    /** Number of repair rounds spent (bad JSON, invalid answers,
+     * guard rejections). */
+    repairCount: number;
+    /** The most recent rejected final draft (problems + its message),
+     * so a fallback can be attributed to the exact failed check from
+     * the trace alone; null when no final was ever rejected. */
+    lastRejection: { problems: string[]; message: string } | null;
+    /** Whether the FIRST executed tool call of the turn succeeded
+     * without an input error; null when no tool was called. */
+    firstAttemptToolSuccess: boolean | null;
+  };
   tokens: { input: number; output: number } | null;
   estimatedCostUsd: number | null;
 }
@@ -209,6 +270,10 @@ export interface AssistantTurnResult {
   conversationId: string;
   answer: AssistantAnswer;
   trace: AssistantTrace;
+  /** Server-side history summaries after this turn. The client
+   * carries THESE (plus the signed context token) to the next turn,
+   * so rehydration never has to trust client-authored history. */
+  history: { role: "user" | "assistant"; content: string }[];
 }
 
 function extractJsonObject(text: string): unknown {
@@ -235,14 +300,26 @@ function registerToolResult(conv: Conversation, tool: string, env: ToolEnvelope<
   if (env.status === "error" || env.data == null) return;
   const data = env.data as Record<string, unknown>;
   conv.registry.warnings.push(...env.warnings);
+  for (const v of Object.values(env.appliedFilters ?? {})) {
+    if (typeof v === "number" && Number.isFinite(v)) conv.registry.factNumbers.add(v);
+  }
+  // Result counts are legitimate prose facts ("tìm thấy 4 sân"): a
+  // count the tool itself reported can never be a fabrication.
+  if (typeof data.totalMatched === "number") conv.registry.factNumbers.add(data.totalMatched);
   if (tool === "search_venues") {
-    for (const v of (data.venues as VenueCardData[]) ?? []) conv.registry.venues.set(v.venueId, v);
+    const venues = (data.venues as VenueCardData[]) ?? [];
+    conv.registry.factNumbers.add(venues.length);
+    for (const v of venues) conv.registry.venues.set(v.venueId, v);
   }
   if (tool === "search_review_evidence") {
-    for (const item of (data.items as EvidenceItem[]) ?? []) conv.registry.evidence.set(item.evidenceId, item);
+    const items = (data.items as EvidenceItem[]) ?? [];
+    conv.registry.factNumbers.add(items.length);
+    for (const item of items) conv.registry.evidence.set(item.evidenceId, item);
   }
   if (tool === "get_bookable_options") {
-    for (const o of (data.options as BookableOption[]) ?? []) conv.registry.options.set(o.optionId, o);
+    const options = (data.options as BookableOption[]) ?? [];
+    conv.registry.factNumbers.add(options.length);
+    for (const o of options) conv.registry.options.set(o.optionId, o);
   }
   if (tool === "compare_venue_options") {
     const comp = data as unknown as VenueComparison;
@@ -255,12 +332,251 @@ function registerToolResult(conv: Conversation, tool: string, env: ToolEnvelope<
     const h = data as unknown as BookingHandoff;
     conv.registry.handoffs.set(h.handoffId, h);
   }
+  if (tool === "get_review_summary_stats") {
+    const stats = data as unknown as ReviewStatsData;
+    for (const v of stats.venues ?? []) conv.registry.stats.set(v.venueId, v);
+  }
+}
+
+/* ------------------------- grounding checks --------------------------
+ * Reference integrity (ids exist) does NOT prove the prose next to
+ * them. The checks below are the server-side grounding layer for the
+ * final message:
+ *  1. NUMERIC CLAIMS — every number stated in prose must be
+ *     traceable to a server fact collected from this conversation's
+ *     tool results (venue cards, options, comparison rows, handoffs,
+ *     review statistics, evidence ratings, conversation state).
+ *     Dates, times and list ordinals are stripped before scanning.
+ *  2. PROVENANCE LABELS — prose may not upgrade a price to
+ *     "official" / "owner-confirmed" when the underlying venue's
+ *     price provenance is platform_reference.
+ *  3. CITATION SCOPE — cited evidence must belong to a venue the
+ *     answer is about, and the sentence carrying the citation must
+ *     overlap the evidence's aspects (a staff review cannot support
+ *     a cleanliness claim).
+ * These checks bound numeric and cited claims; they do NOT decide
+ * semantic entailment of arbitrary free prose. That residual limit
+ * is recorded honestly in the trace (grounding status) and docs.
+ */
+
+interface FactNumbers {
+  ints: Set<number>;
+  floats: Set<number>;
+}
+
+function addFactNumbers(n: FactNumbers, value: unknown): void {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (Number.isInteger(value)) n.ints.add(value);
+    else n.floats.add(value);
+  }
+}
+
+function addStringDigits(n: FactNumbers, s: string | null | undefined): void {
+  if (!s) return;
+  for (const m of s.matchAll(/\d+/g)) n.ints.add(Number.parseInt(m[0], 10));
+}
+
+function collectFactNumbers(
+  conv: Conversation,
+  draft: Extract<z.infer<typeof ModelReply>, { kind: "final" }>["answer"],
+  currentUserMessage?: string,
+): FactNumbers {
+  const n: FactNumbers = { ints: new Set(), floats: new Set() };
+  for (const v of conv.registry.venues.values()) {
+    addFactNumbers(n, v.googleRating);
+    addFactNumbers(n, v.googleRatingCount);
+    addFactNumbers(n, v.inAppRating);
+    addFactNumbers(n, v.inAppRatingCount);
+    addFactNumbers(n, v.minReferenceHourlyPrice);
+    addStringDigits(n, v.name);
+    addStringDigits(n, v.address);
+    addStringDigits(n, v.district);
+  }
+  for (const o of conv.registry.options.values()) {
+    addFactNumbers(n, o.totalPrice);
+    addFactNumbers(n, o.durationHours);
+    for (const b of o.pricePerHourBreakdown ?? []) addFactNumbers(n, b.pricePerHour);
+    addStringDigits(n, o.facilityName);
+  }
+  const comp = conv.registry.comparison;
+  if (comp) {
+    for (const row of comp.rows) for (const val of row.values) addFactNumbers(n, val);
+    for (const pv of comp.perVenue) if (pv.bestOption) addFactNumbers(n, pv.bestOption.totalPrice);
+  }
+  for (const h of conv.registry.handoffs.values()) {
+    addFactNumbers(n, h.totalPrice);
+    addFactNumbers(n, h.durationHours);
+    addFactNumbers(n, h.policySummary.fullRefundBeforeHours);
+    addFactNumbers(n, h.policySummary.partialRefundBeforeHours);
+    addFactNumbers(n, h.policySummary.partialFeePercent);
+  }
+  for (const s of conv.registry.stats.values()) {
+    if (s.googleAggregate) {
+      addFactNumbers(n, s.googleAggregate.rating);
+      addFactNumbers(n, s.googleAggregate.count);
+    }
+    if (s.googleSample) {
+      addFactNumbers(n, s.googleSample.reviewCount);
+      addFactNumbers(n, s.googleSample.averageRating);
+      for (const [k, val] of Object.entries(s.googleSample.ratingDistribution)) {
+        addFactNumbers(n, Number(k));
+        addFactNumbers(n, val);
+      }
+      for (const a of s.googleSample.aspects) {
+        addFactNumbers(n, a.positive);
+        addFactNumbers(n, a.negative);
+        addFactNumbers(n, a.mixed);
+        addFactNumbers(n, a.mentioningReviews);
+        addFactNumbers(n, a.sampleSize);
+      }
+    }
+    if (s.inApp) {
+      addFactNumbers(n, s.inApp.reviewCount);
+      addFactNumbers(n, s.inApp.seedReviewCount);
+      addFactNumbers(n, s.inApp.averageRating);
+      for (const [k, val] of Object.entries(s.inApp.ratingDistribution)) {
+        addFactNumbers(n, Number(k));
+        addFactNumbers(n, val);
+      }
+    }
+  }
+  for (const e of conv.registry.evidence.values()) addFactNumbers(n, e.rating);
+  for (const v of conv.registry.factNumbers) addFactNumbers(n, v);
+  // Numbers the USER stated are given context, not fabrications: a
+  // model echoing the request's own threshold ("điểm từ 4 trở lên")
+  // must not be rejected for restating it. (Real-model run
+  // 2026-10-28: four fallbacks burned every repair round on the
+  // user's own "4".)
+  // NOTE: conv.history only gains the current message in finish(),
+  // so the caller passes it explicitly; earlier user turns come from
+  // history.
+  for (const h of conv.history) {
+    if (h.role !== "user") continue;
+    for (const { value } of extractProseNumbers(h.content)) addFactNumbers(n, value);
+  }
+  if (currentUserMessage) {
+    for (const { value } of extractProseNumbers(currentUserMessage)) addFactNumbers(n, value);
+  }
+  // Conversation state + answer shape are also legitimate sources
+  // ("chơi 2 tiếng", "tìm được 2 sân", the slot's day/month/year).
+  addFactNumbers(n, conv.state.durationHours);
+  addFactNumbers(n, conv.state.budgetAmount);
+  addFactNumbers(n, draft.venueIds.length);
+  addFactNumbers(n, draft.optionIds.length);
+  addFactNumbers(n, draft.evidenceIds.length);
+  if (conv.state.dateISO) for (const part of conv.state.dateISO.split("-")) addFactNumbers(n, Number(part));
+  return n;
+}
+
+/** Numbers the prose states, with dates/times/ordinals stripped. */
+function extractProseNumbers(message: string): { value: number; isPercent: boolean }[] {
+  const cleaned = message
+    .replace(/\d{4}-\d{2}-\d{2}/g, " ") // ISO dates
+    // dd/mm(/yyyy), 24/7 — but NOT the tail of a decimal fraction:
+    // in "4.6/5" the "6/5" is a rating denominator, and stripping it
+    // as a date leaves a phantom integer "4" that grounding then
+    // rejects (real-model runs 2026-10-28, cases AI-005/AI-017 —
+    // visible once lastRejection drafts were recorded). The
+    // lookbehind refuses a match glued to a digit or a decimal
+    // separator; real dates are preceded by space/punctuation.
+    .replace(/(?<![\d.,])\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ")
+    .replace(/\b\d{1,2}:\d{2}\b/g, " ") // hh:mm
+    .replace(/^\s*\d+[.)]\s+/gm, " "); // list ordinals "1. ", "2) "
+  const out: { value: number; isPercent: boolean }[] = [];
+  for (const m of cleaned.matchAll(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?/g)) {
+    const raw = m[0];
+    const tail = cleaned.slice((m.index ?? 0) + raw.length, (m.index ?? 0) + raw.length + 1);
+    let value: number;
+    if (/^\d{1,3}(\.\d{3})+$/.test(raw)) value = Number(raw.replace(/\./g, ""));
+    else if (/^\d{1,3}(\.\d{3})+,\d+$/.test(raw)) value = Number(raw.replace(/\./g, "").replace(",", "."));
+    else value = Number(raw.replace(",", "."));
+    if (Number.isFinite(value)) out.push({ value, isPercent: tail === "%" });
+  }
+  return out;
+}
+
+function groundingProblems(
+  conv: Conversation,
+  draft: Extract<z.infer<typeof ModelReply>, { kind: "final" }>["answer"],
+  currentUserMessage?: string,
+): string[] {
+  const problems: string[] = [];
+  const facts = collectFactNumbers(conv, draft, currentUserMessage);
+  for (const { value, isPercent } of extractProseNumbers(draft.message)) {
+    if (Number.isInteger(value)) {
+      if (facts.ints.has(value) || facts.floats.has(value)) continue;
+      if (isPercent && facts.ints.has(100 - value)) continue; // "hoàn 70%" from a 30% fee
+      problems.push(`số ${value} trong câu trả lời không có trong dữ kiện do tool cung cấp`);
+    } else {
+      const ok = [...facts.floats].some((f) => Math.abs(f - value) <= 0.051) || facts.ints.has(Math.round(value));
+      if (!ok) problems.push(`số ${value} trong câu trả lời không có trong dữ kiện do tool cung cấp`);
+    }
+  }
+  // Provenance labels may never be upgraded in prose. The check is
+  // negation-aware per clause: "đây KHÔNG PHẢI giá chính thức" and
+  // "giá CHƯA được chủ sân xác nhận" state the truth and must pass —
+  // the v7 substring check flagged them anyway, and a comparison
+  // final that kept restating the (correct) denial burned all its
+  // repair rounds on it (real-model run 2026-10-28, case AI-024).
+  const folded = foldVi(draft.message);
+  const clauses = folded.split(/[.!?;\n]+/);
+  const affirmedPhrase = (phrases: string[]): boolean =>
+    clauses.some((clause) =>
+      phrases.some((p) => {
+        const idx = clause.indexOf(p);
+        if (idx < 0) return false;
+        const before = clause.slice(Math.max(0, idx - 60), idx);
+        return !/\b(khong|chua|chang|not|no)\b/.test(before);
+      }),
+    );
+  if (affirmedPhrase(["gia chinh thuc", "official price"])) {
+    problems.push("câu trả lời gọi giá là 'chính thức' nhưng giá trong hệ thống là giá tham chiếu của nền tảng");
+  }
+  const ownerConfirmedClaim = affirmedPhrase(["chu san xac nhan", "chu san da xac nhan", "owner-verified price", "owner verified price"]);
+  if (ownerConfirmedClaim) {
+    const referenced = draft.venueIds
+      .map((id) => conv.registry.venues.get(id))
+      .filter((v): v is VenueCardData => !!v);
+    const allOwnerPriced = referenced.length > 0 && referenced.every((v) => v.priceType === "owner_verified");
+    if (!allOwnerPriced) {
+      problems.push("câu trả lời khẳng định giá đã được chủ sân xác nhận nhưng provenance của giá là platform_reference");
+    }
+  }
+  // Citation scope: entity + aspect.
+  const answerVenueIds = new Set(
+    draft.type === "venue_comparison" && conv.registry.comparison
+      ? conv.registry.comparison.venueIds
+      : draft.venueIds,
+  );
+  const sentences = draft.message.split(/(?<=[.!?])\s+|\n+/);
+  for (const sentence of sentences) {
+    for (const m of sentence.matchAll(/\[ev:([^\]]+)\]/g)) {
+      const ev = conv.registry.evidence.get(m[1]);
+      if (!ev) continue; // unknown ids are reference problems, handled by the caller
+      if (answerVenueIds.size > 0 && !answerVenueIds.has(ev.venueId)) {
+        problems.push(`evidence ${m[1]} thuộc sân khác (${ev.venueName}) với các sân trong câu trả lời`);
+      }
+      const claimed = clauseAspects(foldVi(sentence));
+      if (claimed.length > 0 && !claimed.some((a) => ev.aspects.includes(a))) {
+        problems.push(
+          `evidence ${m[1]} (khía cạnh: ${ev.aspects.join(", ") || "không rõ"}) không hỗ trợ claim về ${claimed.join(", ")} trong cùng câu`,
+        );
+      }
+    }
+  }
+  // Note: citations may be carried either inline ([ev:<id>] in the
+  // sentence, scope-checked above) or structurally (evidenceIds →
+  // hydrated evidence cards rendered under the message). Both are
+  // legitimate in the protocol; only inline markers get the
+  // sentence-scope check, because only they bind a claim to a source.
+  return problems;
 }
 
 function validateAndHydrate(
   conv: Conversation,
   draft: Extract<z.infer<typeof ModelReply>, { kind: "final" }>["answer"],
-): { ok: true; answer: AssistantAnswer } | { ok: false; problems: string[] } {
+  currentUserMessage?: string,
+): { ok: true; answer: AssistantAnswer } | { ok: false; problems: string[]; referenceProblems: string[]; groundingProblems: string[] } {
   const problems: string[] = [];
   // For a comparison answer, venueIds reference the comparison result
   // itself (validated separately below) — the comparison tool does not
@@ -282,7 +598,10 @@ function validateAndHydrate(
   for (const m of draft.message.matchAll(/\[ev:([^\]]+)\]/g)) {
     if (!conv.registry.evidence.has(m[1])) problems.push(`message cites unknown evidence ${m[1]}`);
   }
-  if (problems.length > 0) return { ok: false, problems };
+  const grounding = groundingProblems(conv, draft, currentUserMessage);
+  if (problems.length > 0 || grounding.length > 0) {
+    return { ok: false, problems: [...problems, ...grounding], referenceProblems: problems, groundingProblems: grounding };
+  }
   return {
     ok: true,
     answer: {
@@ -350,8 +669,13 @@ export interface RunTurnArgs {
   now?: Date;
   cfg?: AiConfig;
   /** Client-carried context for rehydrating the conversation on an
-   * instance that has never seen it (see ClientConversationContext). */
+   * instance that has never seen it (see ClientConversationContext).
+   * HTTP callers must only pass context whose signed token they have
+   * verified for this principal (see src/lib/ai/session.ts). */
   clientContext?: ClientConversationContext;
+  /** Server-derived owner scope for the conversation (session user
+   * or signed anonymous id). Never taken from the request body. */
+  principal?: string;
 }
 
 export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurnResult> {
@@ -359,7 +683,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   const now = args.now ?? new Date();
   const startedAtMs = Date.now();
   const traceId = randomUUID();
-  const conv = getOrCreateConversation(args.conversationId, args.clientContext);
+  const conv = getOrCreateConversation(args.conversationId, args.clientContext, args.principal);
   const budget = new BudgetCounter(cfg.maxToolExecutions);
   const toolCtxBase = { db: args.db, now, timeoutMs: cfg.toolTimeoutMs };
 
@@ -375,18 +699,46 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     budgetLimit: cfg.maxToolExecutions,
     budgetOutcome: "ok",
     evidenceRoundsUsed: 0,
-    validation: { answerValid: false, repaired: false, fallbackUsed: false },
+    validation: {
+      answerValid: false,
+      repaired: false,
+      fallbackUsed: false,
+      schemaValid: false,
+      referencesValid: false,
+      grounding: { status: "not_assessed", problems: [] },
+      repairCount: 0,
+      lastRejection: null,
+      firstAttemptToolSuccess: null,
+    },
     tokens: null,
     estimatedCostUsd: null,
   };
 
+  // Usage accounting is centralized in finish() so EVERY exit path
+  // (success, limited fallback, timeout, provider failure, budget
+  // exhaustion) records the tokens/cost actually spent — previously
+  // only a validated final answer did, which understated cost on
+  // exactly the turns that went wrong.
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let repairCount = 0;
+
   const finish = (answer: AssistantAnswer): AssistantTurnResult => {
     trace.latencyMs = Date.now() - startedAtMs;
     trace.budgetUsed = budget.usedCount;
+    trace.validation.repaired = repairCount > 0;
+    trace.validation.repairCount = repairCount;
+    if (tokensIn + tokensOut > 0) {
+      trace.tokens = { input: tokensIn, output: tokensOut };
+      if (cfg.pricePerMillion) {
+        trace.estimatedCostUsd =
+          (tokensIn / 1_000_000) * cfg.pricePerMillion.input + (tokensOut / 1_000_000) * cfg.pricePerMillion.output;
+      }
+    }
     conv.history.push({ role: "user", content: args.userMessage.slice(0, 2000) });
     conv.history.push({ role: "assistant", content: `[${answer.type}] ${answer.message}`.slice(0, 2000) });
     if (conv.history.length > 24) conv.history = conv.history.slice(-24);
-    return { conversationId: conv.id, answer, trace };
+    return { conversationId: conv.id, answer, trace, history: [...conv.history] };
   };
 
   const messages: ModelMessage[] = [
@@ -399,11 +751,10 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     { role: "user", content: args.userMessage },
   ];
 
-  let tokensIn = 0;
-  let tokensOut = 0;
   let evidenceExecutions = 0;
-  let repaired = false;
   let slotGuardUsed = false;
+  let searchGuardUsed = false;
+  let compareGuardUsed = false;
   const deadline = startedAtMs + cfg.requestTimeoutMs;
   // Snapshot of registry options from EARLIER turns: the shortlist
   // auto-fill below may only use options produced by THIS turn's
@@ -418,7 +769,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     }
     let completion;
     try {
-      completion = await args.model.complete(messages, { timeoutMs: cfg.modelTimeoutMs });
+      completion = await args.model.complete(messages, { timeoutMs: cfg.modelTimeoutMs, maxTokens: cfg.maxOutputTokens });
     } catch (e) {
       const kind = e instanceof ProviderError ? e.kind : "network";
       trace.validation.fallbackUsed = true;
@@ -428,6 +779,15 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
     if (completion.usage) {
       tokensIn += completion.usage.inputTokens;
       tokensOut += completion.usage.outputTokens;
+    }
+    // Per-request token budget, checked BETWEEN rounds: the call
+    // that crosses the line has already been paid for (that overshoot
+    // is bounded by one call's max output + the round's input), but
+    // no further rounds are bought once the budget is spent.
+    if (tokensIn + tokensOut > cfg.maxTotalTokens) {
+      trace.budgetOutcome = "exhausted";
+      trace.validation.fallbackUsed = true;
+      return finish(fallbackAnswer(conv, "đã vượt ngân sách token cho lượt này"));
     }
     messages.push({ role: "assistant", content: completion.text });
 
@@ -439,13 +799,30 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
         role: "user",
         content: "Phản hồi của bạn không đúng định dạng JSON của giao thức. Hãy trả về đúng MỘT đối tượng JSON theo giao thức, không thêm chữ nào khác.",
       });
-      repaired = true;
+      repairCount += 1;
       continue;
     }
 
+    // Registry freshness: when the model's patch CHANGES any
+    // slot-defining slot (sport, district, date, start, duration,
+    // budget, venue set), every option/handoff/comparison gathered
+    // under the old requirements is stale by definition and must not
+    // be issued for the new state. Clear them; the model re-checks
+    // with the read-only tools (the registry rebuilds from real
+    // results only). Venue cards, evidence and stats survive — they
+    // are not slot-specific — but see the freshness limits in
+    // docs/ai-assistant.md.
+    const prevState = conv.state;
     conv.state = applyStatePatch(conv.state, reply.statePatch);
+    const SLOT_KEYS = ["sportSlug", "district", "dateISO", "startTime", "durationHours", "budgetAmount", "budgetBasis", "venueIds"] as const;
+    if (SLOT_KEYS.some((k) => JSON.stringify(prevState[k]) !== JSON.stringify(conv.state[k]))) {
+      conv.registry.options.clear();
+      conv.registry.handoffs.clear();
+      conv.registry.comparison = null;
+    }
 
     if (reply.kind === "final") {
+      trace.validation.schemaValid = true;
       // Stats guard (live-eval 2026-10-28, case 5): when the user asks
       // HOW MANY reviews (a count question), the model occasionally
       // answers with invented counts and no tool call at all. A final
@@ -464,7 +841,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
           content:
             "Câu trả lời chưa hợp lệ: người dùng đang hỏi SỐ LƯỢNG đánh giá nhưng bạn chưa gọi get_review_summary_stats thành công trong lượt này, nên mọi con số trong câu trả lời đều không có nguồn. Hãy gọi get_review_summary_stats (dùng search_venues trước nếu chưa có venueId) rồi trả lời lại bằng số thật, nêu rõ tử số/mẫu số/phạm vi.",
         });
-        repaired = true;
+        repairCount += 1;
         continue;
       }
       // Slot-check guard (live-eval 2026-10-28, case 1 re-probe):
@@ -495,7 +872,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
           content:
             `Câu trả lời chưa hợp lệ: hội thoại đã có đủ ngày (${conv.state.dateISO}), giờ bắt đầu (${conv.state.startTime}) và thời lượng (${conv.state.durationHours} giờ), nhưng bạn chưa kiểm tra lịch/giá thành công trong lượt này. Không được dùng giá tham chiếu theo giờ để kết luận sân phù hợp với khung giờ/ngân sách. Hãy gọi compare_venue_options cho tối đa 3 venueId trong danh sách (hoặc get_bookable_options nếu chỉ có 1 sân), dùng đúng ngày/giờ/thời lượng trong state, rồi trả lời lại bằng option thật; nếu không còn trống thì nói rõ điều đó.`,
         });
-        repaired = true;
+        repairCount += 1;
         slotGuardUsed = true;
         continue;
       }
@@ -529,22 +906,88 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
         fresh.sort((a, b) => a.startAt.localeCompare(b.startAt) || (a.totalPrice ?? Number.MAX_SAFE_INTEGER) - (b.totalPrice ?? Number.MAX_SAFE_INTEGER));
         if (fresh.length > 0) reply.answer.optionIds = fresh.slice(0, 6).map((o) => o.optionId);
       }
-      const check = validateAndHydrate(conv, reply.answer);
+      // Search guard (real-model run 2026-10-28, case AI-011): the
+      // model repeatedly submitted venue_shortlist finals WITHOUT ever
+      // calling search_venues — every draft failed validation and the
+      // turn ended in fallback with zero tool calls. A shortlist that
+      // names no venue while the registry is still empty means the
+      // search never happened: nudge exactly once to run it.
+      if (
+        !searchGuardUsed &&
+        reply.answer.type === "venue_shortlist" &&
+        reply.answer.venueIds.length === 0 &&
+        conv.registry.venues.size === 0 &&
+        conv.registry.options.size === 0 &&
+        !conv.registry.comparison &&
+        // A search that ran and matched nothing (status "empty") DID
+        // happen — an empty shortlist is then the honest answer, not
+        // this pathology. Only a turn with no executed search at all
+        // (and no options/comparison from other tools) is nudged.
+        !trace.toolCalls.some((c) => c.tool === "search_venues" && c.status !== "error")
+      ) {
+        messages.push({
+          role: "user",
+          content:
+            "Câu trả lời chưa hợp lệ: bạn chưa gọi search_venues thành công trong hội thoại này nên chưa có sân nào để giới thiệu. Hãy gọi search_venues ngay với tiêu chí người dùng đã nêu (môn, khu vực, điểm tối thiểu nếu có), rồi trả lời bằng các venueId thật từ kết quả.",
+        });
+        repairCount += 1;
+        searchGuardUsed = true;
+        continue;
+      }
+      // Compare-intent guard (real-model runs 2026-10-28, case
+      // AI-024): asked to compare two NAMED venues at a fully
+      // specified slot, the model repeatedly answered with a
+      // clarification demanding sport + budget and called no tool at
+      // all — even after prompt v9 told it to search by name and
+      // infer the sport. When the request itself carries compare
+      // intent plus a complete slot and the model has done nothing,
+      // nudge exactly once to search by name and compare; a second
+      // clarification is the model's choice and stands.
+      const compareIntent = /(so sánh|compare)/i.test(args.userMessage);
+      const slotInState = Boolean(conv.state.dateISO && conv.state.startTime && conv.state.durationHours);
+      const slotInMessage = /\d{1,2}:\d{2}/.test(args.userMessage) && /(tiếng|giờ|hours?)/i.test(args.userMessage);
+      if (
+        !compareGuardUsed &&
+        compareIntent &&
+        (slotInState || slotInMessage) &&
+        reply.answer.type === "clarification" &&
+        trace.toolCalls.length === 0
+      ) {
+        messages.push({
+          role: "user",
+          content:
+            "Câu trả lời chưa hợp lệ: người dùng đã nêu tên các sân cần so sánh cùng ngày/giờ và thời lượng cụ thể — đừng hỏi lại môn hay ngân sách. Hãy gọi search_venues theo TÊN sân để lấy venueId (môn lấy từ kết quả search), rồi gọi compare_venue_options với đúng ngày/giờ/thời lượng đó và trả lời bằng kết quả so sánh thật.",
+        });
+        repairCount += 1;
+        compareGuardUsed = true;
+        continue;
+      }
+      const check = validateAndHydrate(conv, reply.answer, args.userMessage);
       if (check.ok) {
         trace.validation.answerValid = true;
-        trace.validation.repaired = repaired;
-        if (completion.usage || tokensIn > 0) trace.tokens = { input: tokensIn, output: tokensOut };
-        if (cfg.pricePerMillion && trace.tokens) {
-          trace.estimatedCostUsd =
-            (tokensIn / 1_000_000) * cfg.pricePerMillion.input + (tokensOut / 1_000_000) * cfg.pricePerMillion.output;
-        }
+        trace.validation.referencesValid = true;
+        trace.validation.grounding = { status: "passed", problems: [] };
         return finish(check.answer);
       }
+      trace.validation.referencesValid = check.referenceProblems.length === 0;
+      if (check.groundingProblems.length > 0) {
+        trace.validation.grounding = { status: "failed", problems: check.groundingProblems };
+      }
+      trace.validation.lastRejection = { problems: check.problems, message: reply.answer.message };
+      // The rejection names the offending numbers but, until v8, never
+      // said which numbers ARE allowed — models guessed, re-offended
+      // and burned every repair round (real-model run 2026-10-28:
+      // five fallbacks with 5–8 repairs each). State the whitelist.
+      const allowed = collectFactNumbers(conv, reply.answer, args.userMessage);
+      const allowedInts = [...allowed.ints].sort((a, b) => a - b).slice(0, 60);
+      const allowedFloats = [...allowed.floats].sort((a, b) => a - b).slice(0, 30);
       messages.push({
         role: "user",
-        content: `Câu trả lời chưa hợp lệ: ${check.problems.join("; ")}. Chỉ dùng venueId/evidenceId/optionId/handoffId do tool đã trả về trong hội thoại này, hoặc gọi thêm tool để lấy dữ liệu thật rồi trả lời lại.`,
+        content:
+          `Câu trả lời chưa hợp lệ: ${check.problems.join("; ")}. Chỉ dùng venueId/evidenceId/optionId/handoffId do tool đã trả về trong hội thoại này, hoặc gọi thêm tool để lấy dữ liệu thật rồi trả lời lại. ` +
+          `Các số ĐƯỢC PHÉP xuất hiện trong message: ${[...allowedInts.map(String), ...allowedFloats.map(String)].join(", ") || "(không có — hãy viết message không chứa con số nào)"}. Mọi con số ngoài danh sách này phải bỏ hẳn; không làm tròn số thập phân (viết nguyên văn số tool trả về).`,
       });
-      repaired = true;
+      repairCount += 1;
       continue;
     }
 
@@ -554,28 +997,33 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
       messages.push({ role: "tool", content: JSON.stringify({ status: "error", error: { code: "UNKNOWN_TOOL", message: `Tool ${reply.tool} không tồn tại` } }) });
       continue;
     }
-    if (def.isEvidenceTool) {
-      evidenceExecutions += 1;
-      if (evidenceExecutions > 1 + cfg.maxEvidenceRounds) {
-        messages.push({
-          role: "tool",
-          content: JSON.stringify({
-            status: "error",
-            error: { code: ToolErrorCode.BudgetExhausted, message: "Đã hết vòng bổ sung bằng chứng cho lượt này — hãy trả lời bằng dữ liệu đã có và nêu giới hạn." },
-          }),
-        });
-        continue;
-      }
-      trace.evidenceRoundsUsed = Math.max(0, evidenceExecutions - 1);
+    // Evidence-round accounting (audit D): a supplementary evidence
+    // round is consumed only by an execution that actually GATHERS
+    // data (status ok/empty/partial). An execution rejected for
+    // invalid input — or any other error — must not burn the round:
+    // the model still needs it to repair the input and fetch the
+    // evidence. Failed attempts remain bounded by the total tool
+    // budget, the model-round cap and this same refusal once the
+    // gathering cap is genuinely reached.
+    if (def.isEvidenceTool && evidenceExecutions >= 1 + cfg.maxEvidenceRounds) {
+      messages.push({
+        role: "tool",
+        content: JSON.stringify({
+          status: "error",
+          error: { code: ToolErrorCode.BudgetExhausted, message: "Đã hết vòng bổ sung bằng chứng cho lượt này — hãy trả lời bằng dữ liệu đã có và nêu giới hạn." },
+        }),
+      });
+      continue;
     }
     const toolStart = Date.now();
     let envelope: ToolEnvelope<unknown>;
     const ctx = { ...toolCtxBase, budget };
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       envelope = await Promise.race([
         def.run(ctx, reply.input),
-        new Promise<ToolEnvelope<unknown>>((resolve) =>
-          setTimeout(
+        new Promise<ToolEnvelope<unknown>>((resolve) => {
+          timer = setTimeout(
             () =>
               resolve({
                 status: "error",
@@ -589,8 +1037,8 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
                 error: { code: ToolErrorCode.Timeout, message: `Tool ${reply.tool} vượt quá ${cfg.toolTimeoutMs}ms` },
               }),
             cfg.toolTimeoutMs,
-          ),
-        ),
+          );
+        }),
       ]);
     } catch (e) {
       envelope = {
@@ -605,6 +1053,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
         error: { code: ToolErrorCode.DbError, message: e instanceof Error ? e.message : "Tool failed" },
       };
     }
+    if (timer) clearTimeout(timer);
     trace.toolCalls.push({
       tool: reply.tool,
       status: envelope.status,
@@ -612,13 +1061,19 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
       errorCode: envelope.error?.code ?? null,
       input: reply.input,
     });
+    if (trace.toolCalls.length === 1) {
+      trace.validation.firstAttemptToolSuccess = envelope.status !== "error";
+    }
+    if (def.isEvidenceTool && envelope.status !== "error") {
+      evidenceExecutions += 1;
+      trace.evidenceRoundsUsed = Math.max(0, evidenceExecutions - 1);
+    }
     registerToolResult(conv, reply.tool, envelope);
     messages.push({ role: "tool", content: JSON.stringify(envelope).slice(0, 24_000) });
   }
 
   trace.budgetOutcome = budget.remaining <= 0 ? "exhausted" : "ok";
   trace.validation.fallbackUsed = true;
-  trace.validation.repaired = repaired;
   return finish(fallbackAnswer(conv, "đã dùng hết số vòng xử lý cho lượt này"));
 }
 

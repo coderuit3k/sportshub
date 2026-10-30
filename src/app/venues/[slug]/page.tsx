@@ -4,6 +4,7 @@ import { getAvailability } from "@/services/bookings";
 import { todayDateISO, formatTimeHHMM, isValidDateISO } from "@/lib/time/tz";
 import { BookingWidget, BookFacilityButton, FavoriteButton } from "@/components/client-widgets";
 import VenueDetailMapSection from "@/components/VenueDetailMapSection";
+import ReviewAnchorScroll from "@/components/venue/ReviewAnchorScroll";
 import VenueImage from "@/components/VenueImage";
 import SportIcon from "@/components/SportIcon";
 import AmenityIcon from "@/components/AmenityIcon";
@@ -189,13 +190,14 @@ export default async function VenueDetailPage({
         </section>
         {venue.googleReviews.length > 0 && (
           <section className="card border-primary/30 bg-primary/5 p-5">
+            <ReviewAnchorScroll />
             <h2 className="mb-3 font-bold">{t("googleReviewsHeading")}</h2>
             <div className="space-y-3">
               {venue.googleReviews.map((r) => {
                 const nameParts = r.authorName.trim().split(/\s+/).filter(Boolean);
                 const initials = ((nameParts[0]?.[0] ?? "") + (nameParts.length > 1 ? nameParts[nameParts.length - 1][0] : "")).toUpperCase();
                 return (
-                  <article key={r.id} className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
+                  <article key={r.id} id={`review-${r.id}`} className="scroll-mt-24 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
                     <div className="flex items-start gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary" aria-hidden="true">{initials}</div>
                       <div className="min-w-0">

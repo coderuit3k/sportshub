@@ -30,7 +30,7 @@ export interface ModelCompletion {
 
 export interface ChatModel {
   readonly id: string;
-  complete(messages: ModelMessage[], opts: { timeoutMs: number }): Promise<ModelCompletion>;
+  complete(messages: ModelMessage[], opts: { timeoutMs: number; maxTokens?: number }): Promise<ModelCompletion>;
 }
 
 export class ProviderError extends Error {
@@ -50,11 +50,12 @@ export class OpenAiCompatibleModel implements ChatModel {
     this.id = `${cfg.providerKind}:${cfg.model}`;
   }
 
-  async complete(messages: ModelMessage[], opts: { timeoutMs: number }): Promise<ModelCompletion> {
+  async complete(messages: ModelMessage[], opts: { timeoutMs: number; maxTokens?: number }): Promise<ModelCompletion> {
     const body = JSON.stringify({
       model: this.cfg.model,
       messages: messages.map((m) => ({ role: m.role === "tool" ? "user" : m.role, content: m.content })),
       temperature: 0.2,
+      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
     });
     let lastError: ProviderError | null = null;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -157,7 +158,7 @@ export class BedrockModel implements ChatModel {
       (new BedrockRuntimeClient({ region: cfg.awsRegion }) as unknown as BedrockConverseClient);
   }
 
-  async complete(messages: ModelMessage[], opts: { timeoutMs: number }): Promise<ModelCompletion> {
+  async complete(messages: ModelMessage[], opts: { timeoutMs: number; maxTokens?: number }): Promise<ModelCompletion> {
     const system = messages
       .filter((m) => m.role === "system")
       .map((m) => m.content)
@@ -177,7 +178,7 @@ export class BedrockModel implements ChatModel {
       modelId: this.resolvedModelId,
       ...(system ? { system: [{ text: system }] } : {}),
       messages: convo,
-      inferenceConfig: { temperature: 0.2, maxTokens: 2048 },
+      inferenceConfig: { temperature: 0.2, maxTokens: opts.maxTokens ?? 2048 },
     });
 
     let lastError: ProviderError | null = null;

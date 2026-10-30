@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -6,6 +7,7 @@ import { aiAssistantLimiter, getClientIp, tooManyRequests } from "@/lib/rate-lim
 import { loadAiConfig, modelConfigured } from "@/lib/ai/config";
 import { createModel } from "@/lib/ai/provider";
 import { runAssistantTurn, type AssistantAnswer } from "@/lib/ai/orchestrator";
+import { AI_ANON_COOKIE, resolveAnonPrincipal, signContextToken, verifyContextToken } from "@/lib/ai/session";
 
 /**
  * POST /api/assistant — one conversational turn of the AI assistant.
@@ -20,13 +22,16 @@ const schema = z.object({
   conversationId: z.string().uuid().optional(),
   message: z.string().trim().min(1).max(2000),
   /** Client-carried conversation context (public search slots +
-   * history summaries). Re-validated server-side; lets a fresh
-   * serverless instance continue the conversation. */
+   * history summaries). Only honoured together with a valid signed
+   * context token binding it to this principal + conversation (see
+   * src/lib/ai/session.ts); otherwise it is IGNORED, never partially
+   * trusted. */
   state: z.record(z.unknown()).optional(),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(2000) }))
     .max(24)
     .optional(),
+  contextToken: z.string().max(8192).optional(),
 });
 
 function errorAnswer(message: string, warnings: string[] = []): AssistantAnswer {
@@ -79,6 +84,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
+  // Conversation ownership: the principal comes ONLY from the
+  // verified session (logged-in) or the signed anonymous cookie —
+  // never from the request body. Switching accounts therefore
+  // switches conversation scope: the previous principal's
+  // conversations become invisible, by design.
+  const cookieStore = await cookies();
+  let principal: string;
+  let newAnonCookie: string | null = null;
+  if (user) {
+    principal = `user:${user.id}`;
+  } else {
+    const anon = resolveAnonPrincipal(cookieStore.get(AI_ANON_COOKIE)?.value);
+    principal = anon.principal;
+    if (anon.isNew) newAnonCookie = anon.cookieValue;
+  }
+
+  const carried = parsed.data.state || parsed.data.history
+    ? { state: parsed.data.state, history: parsed.data.history }
+    : undefined;
+  const carriedVerified =
+    carried !== undefined &&
+    verifyContextToken(parsed.data.contextToken, {
+      conversationId: parsed.data.conversationId,
+      principal,
+      state: parsed.data.state,
+      history: parsed.data.history,
+    });
+
   const model = createModel(cfg);
   const result = await runAssistantTurn({
     conversationId: parsed.data.conversationId,
@@ -86,10 +119,24 @@ export async function POST(req: Request) {
     model,
     db: prisma,
     cfg,
-    clientContext:
-      parsed.data.state || parsed.data.history
-        ? { state: parsed.data.state, history: parsed.data.history }
-        : undefined,
+    principal,
+    clientContext: carriedVerified ? carried : undefined,
   });
-  return NextResponse.json(result);
+  const contextToken = signContextToken({
+    conversationId: result.conversationId,
+    principal,
+    state: result.answer.appliedContext,
+    history: result.history,
+  });
+  const res = NextResponse.json({ ...result, contextToken });
+  if (newAnonCookie) {
+    res.cookies.set(AI_ANON_COOKIE, newAnonCookie, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 2,
+      secure: process.env.NODE_ENV === "production",
+    });
+  }
+  return res;
 }

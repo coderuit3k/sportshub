@@ -61,7 +61,7 @@ describe("orchestrator", () => {
     expect(res.trace.toolCalls[0].input).toMatchObject({ sportSlug: "cau-long", district: "Thủ Đức" });
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
-    expect(res.trace.promptVersion).toContain("v6");
+    expect(res.trace.promptVersion).toContain("v10");
   });
 
   it("rejects a hallucinated evidence id and falls back to a limited answer built from verified data", async () => {
@@ -283,5 +283,371 @@ describe("orchestrator", () => {
     expect(res.answer.type).toBe("limited_answer");
     expect(res.trace.validation.fallbackUsed).toBe(true);
     expect(res.answer.options.length).toBeGreaterThan(0); // verified options survive the fallback
+  });
+});
+
+describe("orchestrator — grounding (audit A)", () => {
+  it("blocks a fabricated price/count next to a VALID evidence id", async () => {
+    __resetConversations();
+    const bad = J({
+      kind: "final",
+      answer: {
+        type: "review_insight",
+        message: "Ánh sáng tốt [ev:gr_light_pos]. Giá chính thức chỉ 1 đồng/giờ và sân có 999 sân con.",
+        venueIds: ["v_thuduc"], evidenceIds: ["gr_light_pos"], optionIds: [], handoffId: null, missingFields: [],
+      },
+    });
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+      J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], aspects: ["lighting"], limit: 6 } }),
+      bad,
+      bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai ánh sáng thế nào, giá bao nhiêu?", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("limited_answer");
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.referencesValid).toBe(true); // the ID was real — references are not grounding
+    expect(res.trace.validation.grounding.status).toBe("failed");
+    expect(res.trace.validation.grounding.problems.join(" ")).toMatch(/999|chính thức/);
+    expect(res.answer.message).not.toContain("999");
+    // v8: the rejection is attributable from the trace alone.
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toMatch(/999|chính thức/);
+    expect(res.trace.validation.lastRejection?.message).toContain("999");
+  });
+
+  it("accepts a threshold number the USER stated (v8 regression: real-model 'số 4' fallbacks)", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", district: "Thủ Đức", limit: 5 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_shortlist",
+          // "3" appears in NO tool fact here (ratings 4.6/4.0, counts
+          // 1200/80, 1 venue listed) — only in the user's own request.
+          message: "Các sân cầu lông ở Thủ Đức có điểm Google từ 3 trở lên, nổi bật là Minh Khai với 4,6 điểm.",
+          venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông ở Thủ Đức điểm từ 3 trở lên", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("passed");
+  });
+
+  it("accepts the search result COUNT as a prose fact (v8)", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 5 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_shortlist",
+          // 3 matched venues exist but only 1 is listed, so "3" can
+          // only be grounded by totalMatched / returned-count facts.
+          message: "Tìm thấy 3 sân cầu lông phù hợp; gợi ý đầu tiên là Minh Khai Thủ Đức với 4,6 điểm.",
+          venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("passed");
+  });
+
+  it("accepts a rating written as '4.6/5' (v9 regression: the dd/mm stripper must not eat the fraction tail)", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 5 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_shortlist",
+          // The exact shape the real model produced in AI-005/AI-017:
+          // "4.6/5" — v8 stripped "6/5" as a dd/mm date and rejected
+          // the leftover integer "4" as ungrounded, 7 repairs in a row.
+          message: "Sân Minh Khai Thủ Đức đạt 4.6/5 điểm Google (1200 đánh giá).",
+          venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông ở Thủ Đức", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("passed");
+  });
+
+  it("allows a truthful DENIAL of official/owner-confirmed pricing (v8: negation-aware provenance)", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+      J({ kind: "tool_call", tool: "get_bookable_options", input: { venueId: "v_thuduc", date: SAT, preferredStartTime: "17:00", durationHours: 1 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_shortlist",
+          message: "Sân Minh Khai còn trống lúc 17:00, tổng giá 100.000 đồng cho 1 giờ. Đây không phải giá chính thức và giá chưa được chủ sân xác nhận — chỉ là giá tham chiếu của nền tảng.",
+          venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [`opt_f_thuduc_${SAT}_1700_1h`], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("passed");
+  });
+
+  it("nudges a tool-less shortlist to search first instead of falling back (v8 search guard, case AI-011)", async () => {
+    __resetConversations();
+    const emptyShortlist = J({
+      kind: "final",
+      answer: {
+        type: "venue_shortlist",
+        message: "Đây là các sân cầu lông điểm từ 4 trở lên.",
+        venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+      },
+    });
+    const model = scripted([
+      emptyShortlist,
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", minRating: 4, limit: 5 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_shortlist",
+          message: "Tìm thấy 3 sân cầu lông có điểm Google từ 4 trở lên; cao nhất là Minh Khai Thủ Đức với 4,6 điểm.",
+          venueIds: ["v_thuduc", "v_quan7", "v_linhxuan"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông điểm từ 4 trở lên", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls.some((c) => c.tool === "search_venues" && c.status === "ok")).toBe(true);
+    expect(res.trace.validation.repairCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("nudges a tool-less clarification on a named-venue comparison to search + compare (compare guard, case AI-024)", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({
+        kind: "final",
+        statePatch: { dateISO: SAT, startTime: "17:00", durationHours: 1 },
+        answer: {
+          type: "clarification",
+          message: "Bạn chơi môn gì và ngân sách bao nhiêu?",
+          venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: ["sportSlug", "budgetAmount"],
+        },
+      }),
+      J({ kind: "tool_call", tool: "search_venues", input: { query: "minh khai", limit: 5 } }),
+      J({ kind: "tool_call", tool: "compare_venue_options", input: { venueIds: ["v_thuduc", "v_quan7"], criteria: [], date: SAT, startTime: "17:00", durationHours: 1 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_comparison",
+          message: "So sánh cùng điều kiện như sau.",
+          venueIds: ["v_thuduc", "v_quan7"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({
+      userMessage: "So sánh sân Minh Khai Thủ Đức và Quận 7 tối thứ Bảy 17:00, 1 tiếng",
+      model, db, cfg: cfg(),
+    });
+    expect(res.answer.type).toBe("venue_comparison");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls.some((c) => c.tool === "compare_venue_options" && c.status === "ok")).toBe(true);
+    expect(res.trace.validation.repairCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("accepts a final whose numbers all come from tool facts", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+      J({ kind: "tool_call", tool: "get_bookable_options", input: { venueId: "v_thuduc", date: SAT, preferredStartTime: "17:00", durationHours: 1 } }),
+      J({
+        kind: "final",
+        answer: {
+          type: "venue_shortlist",
+          message: "Sân Minh Khai còn trống lúc 17:00, tổng giá 100.000 đồng cho 1 giờ (giá tham chiếu của nền tảng).",
+          venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [`opt_f_thuduc_${SAT}_1700_1h`], handoffId: null, missingFields: [],
+        },
+      }),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("venue_shortlist");
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("passed");
+    expect(res.trace.validation.referencesValid).toBe(true);
+    expect(res.trace.validation.schemaValid).toBe(true);
+    expect(res.trace.validation.firstAttemptToolSuccess).toBe(true);
+  });
+
+  it("blocks evidence of venue A used to conclude about venue B", async () => {
+    __resetConversations();
+    const bad = J({
+      kind: "final",
+      answer: {
+        type: "review_insight",
+        message: "Sân này ánh sáng tốt [ev:gr_light_pos].",
+        venueIds: ["v_quan7"], evidenceIds: ["gr_light_pos"], optionIds: [], handoffId: null, missingFields: [],
+      },
+    });
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", district: "Quận 7", limit: 3 } }),
+      J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], aspects: ["lighting"], limit: 6 } }),
+      bad,
+      bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân ở Quận 7 ánh sáng thế nào?", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("limited_answer");
+    expect(res.trace.validation.grounding.status).toBe("failed");
+    expect(res.trace.validation.grounding.problems.join(" ")).toMatch(/sân khác/);
+  });
+
+  it("blocks a cleanliness claim supported only by a staff/court review", async () => {
+    __resetConversations();
+    const bad = J({
+      kind: "final",
+      answer: {
+        type: "review_insight",
+        message: "Vệ sinh rất sạch [ev:gr_pairing].",
+        venueIds: ["v_thuduc"], evidenceIds: ["gr_pairing"], optionIds: [], handoffId: null, missingFields: [],
+      },
+    });
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], aspects: ["staff"], limit: 6 } }),
+      bad,
+      bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai có sạch không?", model, db, cfg: cfg() });
+    expect(res.answer.type).toBe("limited_answer");
+    expect(res.trace.validation.grounding.status).toBe("failed");
+  });
+});
+
+describe("orchestrator — conversation ownership (audit B)", () => {
+  it("another principal presenting the same conversationId sees a FRESH conversation", async () => {
+    __resetConversations();
+    const first = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", district: "Thủ Đức", limit: 3 }, statePatch: { sportSlug: "cau-long", district: "Thủ Đức" } }),
+      J({ kind: "final", answer: { type: "clarification", message: "Bạn muốn chơi ngày nào?", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: ["dateISO"] } }),
+    ]);
+    const resA = await runAssistantTurn({ userMessage: "Tìm sân cầu lông Thủ Đức", model: first, db, cfg: cfg(), principal: "user:alice" });
+    expect(resA.answer.appliedContext.district).toBe("Thủ Đức");
+
+    let seenState = "";
+    const second = scripted(
+      [J({ kind: "final", answer: { type: "clarification", message: "Bạn muốn tìm sân nào?", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } })],
+      (messages) => { seenState = messages.map((m) => m.content).join("\n"); },
+    );
+    const resB = await runAssistantTurn({ conversationId: resA.conversationId, userMessage: "tiếp tục đi", model: second, db, cfg: cfg(), principal: "user:bob" });
+    expect(resB.conversationId).not.toBe(resA.conversationId);
+    expect(resB.answer.appliedContext.district).toBeNull();
+    expect(seenState).not.toContain("Thủ Đức");
+  });
+
+  it("the owning principal keeps state across turns with the same id", async () => {
+    __resetConversations();
+    const first = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", district: "Thủ Đức", limit: 3 }, statePatch: { sportSlug: "cau-long", district: "Thủ Đức" } }),
+      J({ kind: "final", answer: { type: "clarification", message: "Bạn muốn chơi ngày nào?", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: ["dateISO"] } }),
+    ]);
+    const resA = await runAssistantTurn({ userMessage: "Tìm sân cầu lông Thủ Đức", model: first, db, cfg: cfg(), principal: "anon:xyz" });
+    const second = scripted([
+      J({ kind: "final", answer: { type: "clarification", message: "Bạn muốn chơi mấy giờ?", venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: ["startTime"] } }),
+    ]);
+    const resB = await runAssistantTurn({ conversationId: resA.conversationId, userMessage: "thứ Bảy này", model: second, db, cfg: cfg(), principal: "anon:xyz" });
+    expect(resB.conversationId).toBe(resA.conversationId);
+    expect(resB.answer.appliedContext.district).toBe("Thủ Đức");
+  });
+});
+
+describe("orchestrator — registry freshness (audit J)", () => {
+  it("changing the start time invalidates options quoted for the old slot", async () => {
+    __resetConversations();
+    const optionId = `opt_f_thuduc_${SAT}_1700_1h`;
+    const turn1 = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 }, statePatch: { sportSlug: "cau-long", dateISO: SAT, startTime: "17:00", durationHours: 1 } }),
+      J({ kind: "tool_call", tool: "get_bookable_options", input: { venueId: "v_thuduc", date: SAT, preferredStartTime: "17:00", durationHours: 1 } }),
+      J({ kind: "final", answer: { type: "venue_shortlist", message: "Còn trống lúc 17:00.", venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [optionId], handoffId: null, missingFields: [] } }),
+    ]);
+    const res1 = await runAssistantTurn({ userMessage: "Tìm sân cầu lông thứ Bảy 17:00, 1 giờ", model: turn1, db, cfg: cfg() });
+    expect(res1.answer.options.map((o) => o.optionId)).toEqual([optionId]);
+
+    const stale = J({
+      kind: "final", statePatch: { startTime: "20:00" },
+      answer: { type: "venue_shortlist", message: "Đây là lựa chọn của bạn.", venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [optionId], handoffId: null, missingFields: [] },
+    });
+    const turn2 = scripted([stale, stale]);
+    const res2 = await runAssistantTurn({ conversationId: res1.conversationId, userMessage: "Đổi sang 20:00 giúp tôi", model: turn2, db, cfg: cfg() });
+    expect(res2.trace.validation.fallbackUsed).toBe(true);
+    expect(res2.answer.options).toEqual([]);
+  });
+});
+
+describe("orchestrator — evidence budget & trace completeness (audit D/J)", () => {
+  it("an invalid-input evidence call does not consume the evidence round", async () => {
+    __resetConversations();
+    let sawBudgetRefusal = false;
+    const model = scripted(
+      [
+        J({ kind: "tool_call", tool: "get_review_summary_stats", input: { venueIds: [] } }), // INVALID_INPUT
+        J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+        J({ kind: "tool_call", tool: "get_review_summary_stats", input: { venueIds: ["v_thuduc"] } }),
+        J({ kind: "tool_call", tool: "search_review_evidence", input: { venueIds: ["v_thuduc"], limit: 3 } }), // 2nd gathering → refused
+        J({ kind: "final", answer: { type: "review_insight", message: "Mẫu Google đã lưu của sân Minh Khai có 5 bài đánh giá.", venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] } }),
+      ],
+      (messages) => {
+        if (messages.some((m) => m.role === "tool" && m.content.includes("BUDGET_EXHAUSTED"))) sawBudgetRefusal = true;
+      },
+    );
+    const res = await runAssistantTurn({ userMessage: "Có bao nhiêu review về sân Minh Khai?", model, db, cfg: cfg({ maxEvidenceRounds: 0 }) });
+    expect(res.trace.toolCalls.map((c) => c.status)).toEqual(["error", "ok", "ok"]);
+    expect(res.trace.toolCalls[0].errorCode).toBe("INVALID_INPUT");
+    expect(res.trace.validation.firstAttemptToolSuccess).toBe(false);
+    expect(res.trace.evidenceRoundsUsed).toBe(0);
+    expect(sawBudgetRefusal).toBe(true);
+    expect(res.answer.type).toBe("review_insight");
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("records tokens and cost on the provider-failure exit path", async () => {
+    __resetConversations();
+    let calls = 0;
+    const flaky = {
+      id: "flaky-test",
+      complete: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            text: J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+            usage: { inputTokens: 1000, outputTokens: 50 },
+          };
+        }
+        throw new Error("provider down");
+      },
+    };
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông", model: flaky, db, cfg: cfg() });
+    expect(res.answer.type).toBe("limited_answer");
+    expect(res.trace.validation.fallbackUsed).toBe(true);
+    expect(res.trace.tokens).toEqual({ input: 1000, output: 50 });
+    expect(res.trace.estimatedCostUsd).toBeCloseTo(0.00125, 8);
+  });
+
+  it("stops buying rounds when the per-turn token budget is spent", async () => {
+    __resetConversations();
+    const hungry = {
+      id: "hungry-test",
+      complete: async () => ({
+        text: J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 3 } }),
+        usage: { inputTokens: 5000, outputTokens: 0 },
+      }),
+    };
+    const res = await runAssistantTurn({ userMessage: "Tìm sân cầu lông", model: hungry, db, cfg: cfg({ maxTotalTokens: 100 }) });
+    expect(res.answer.type).toBe("limited_answer");
+    expect(res.trace.budgetOutcome).toBe("exhausted");
+    expect(res.trace.tokens).toEqual({ input: 5000, output: 0 });
   });
 });

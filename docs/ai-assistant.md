@@ -80,7 +80,63 @@ are platform reference prices and the schedule is the SportsHub demo
 schedule whenever it quotes either (enforced in the system prompt and
 repeated in tool warnings and UI labels).
 
-## Decision policy (system prompt `sportshub-assistant-v6`)
+## Decision policy (system prompt `sportshub-assistant-v10`)
+
+Prompt v10 (2026-10-28) replaced the numbered decision rules with a
+task-first routing guide (prompt §§1–9: pick the tool by the outcome
+the user needs, ask only for inputs that actually block the current
+task, resolve venues before ID-bound tools, shortest default flows,
+error/retry and stop conditions). The machine contract is unchanged
+and lives outside that guide: the JSON reply protocol, the generated
+tool specs, and a server-constraints block (prompt §10) carrying the
+rules the server itself enforces — stats discipline, error/empty/
+partial semantics incl. `venueOutcomes`, trust labels, review text as
+data (never instructions), handoff recovery, the supplementary
+evidence-round cap, and numeric grounding. Prompt v8–v9 fixes remain
+in force in code (user-stated and result-count numbers are grounding
+facts, negation-aware provenance checks, allowed-number repair
+feedback, search/compare guards).
+
+**Conversation ownership (audit hardening, 2026-10-28).** A
+conversationId is not an authorization token. Turns run under a
+server-derived principal — `user:<id>` from the session cookie, or
+`anon:<uuid>` from an HMAC-signed httpOnly cookie
+(`src/lib/ai/session.ts`) — and the conversation store is scoped by
+principal: presenting another principal's conversationId yields a
+fresh conversation, never their state or history. Client-carried
+context (needed across serverless instances) is honoured only with
+the signed context token issued after the previous turn, binding
+principal + conversationId + exact state + history hash; anything
+else is ignored wholesale. Logging in/out or switching accounts
+switches scope by design (the previous principal's conversations
+become invisible, not transferred).
+
+**Grounding (audit hardening).** Final answers pass three distinct
+checks, recorded separately in the trace: *schema* (protocol shape),
+*reference integrity* (every referenced venue/evidence/option/
+handoff id exists in the tool-result registry) and *grounding*
+(every number in the prose traces to a registered tool fact —
+including the stats registry; price provenance cannot be upgraded
+to "official"/"owner-confirmed" in prose; cited evidence must
+belong to the answer's venue and overlap the citing sentence's
+aspects). Grounding deliberately does NOT claim semantic entailment
+of free prose — see the residual limits in
+`docs/ai-evaluation.md` §6.
+
+**Registry freshness.** Options, handoffs and comparisons are
+slot-specific: any state change to sport, district, date, start
+time, duration, budget or the venue set invalidates them, and the
+model must re-check before they can be issued again. Handoffs
+additionally re-quote freshly inside the tool. Venue cards,
+evidence and stats persist for the conversation; a review deleted
+mid-conversation is only detected on re-fetch (documented limit).
+
+**Compare outcomes.** `compare_venue_options` reports a per-venue
+`venueOutcomes` entry (profile ok/error; quote available /
+unavailable / price_unavailable / unknown_due_to_error /
+not_checked, with errorCode and checkedAt) and degrades its
+envelope to `partial` when any part is unknown. An errored quote is
+never presented as "no slot", and an unpriced slot never as free.
 
 - Counts/shares → stats tool; a review claim → evidence tool; a
   specific time/price → bookable options; comparisons → compare tool.
@@ -124,6 +180,8 @@ repeated in tool warnings and UI labels).
 | `AI_TOOL_TIMEOUT_MS` | 15000 | per-tool deadline |
 | `AI_REQUEST_TIMEOUT_MS` | 60000 | whole-turn deadline |
 | `AI_MODEL_TIMEOUT_MS` | 20000 | per model call (one bounded retry on 429/5xx) |
+| `AI_MAX_OUTPUT_TOKENS` | 2048 | max output tokens per model call (provider-enforced) |
+| `AI_MAX_TOTAL_TOKENS` | 150000 | total token budget per turn, checked between rounds (one-round overshoot possible; not an exact monetary cap) |
 | `AI_PRICE_INPUT_PER_MILLION`, `AI_PRICE_OUTPUT_PER_MILLION` | — | optional; without both, cost is reported `unknown` (null), never 0 |
 
 Rate limiting: `aiAssistantLimiter` — 20 turns / 10 min per user (or
@@ -136,10 +194,14 @@ and the trace does not claim otherwise).
 
 Every turn returns a `trace`: traceId, model id, prompt version,
 answer schema version, per-tool status/duration/error code, budget
-used/limit/outcome, evidence rounds used, validation outcome
-(valid/repaired/fallback), token usage when the provider reports it,
-and estimated cost only when price config exists (else null). Traces
-contain no user records, no precise location, no secrets.
+used/limit/outcome, evidence rounds used, validation outcome split
+into schemaValid / referencesValid / grounding {status, problems} /
+repairCount / firstAttemptToolSuccess / fallbackUsed, and token
+usage + estimated cost recorded on EVERY exit path (success,
+fallback, timeout, provider failure, budget exhaustion) whenever
+the provider reported usage — cost is null (unknown), never 0, when
+no price config exists. Traces contain no user records, no precise
+location, no secrets, no cookies.
 
 ## Known limitations
 
