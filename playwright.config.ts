@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Playwright E2E (Phase 3, Workstream B).
  * Runs against the production build served on port 3100 with the local
- * SQLite dev database — seed it first: `npm run db:seed`.
+ * isolated PostgreSQL schema prepared by scripts/run-e2e.ts.
  */
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -22,7 +22,7 @@ export default defineConfig({
   webServer: {
     command: "npm run build && npm run start -- -p 3100",
     url: "http://localhost:3100",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 240_000,
   },
 });

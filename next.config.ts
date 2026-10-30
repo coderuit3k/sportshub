@@ -23,6 +23,7 @@ function r2PublicPattern(): { protocol: "https"; hostname: string } {
 }
 
 const nextConfig: NextConfig = {
+  distDir: process.env.SPORTSHUB_E2E_BUILD === "1" ? ".next-e2e" : ".next",
   images: {
     // Venue photos: the venue's stored primary photo lives in
     // Cloudflare R2 (curated photos migrated at deploy time + owner

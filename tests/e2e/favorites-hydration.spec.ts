@@ -13,8 +13,7 @@ import { loginAsPlayer } from "./helpers";
  * homepage without any server-side knowledge.
  */
 
-const VENUE_SLUG = "smash-arena-thu-duc";
-const VENUE_NAME = "CLB Cầu Lông Smash Arena Thủ Đức";
+const VENUE_SLUG = "san-cau-long-dong-ho";
 
 function featuredSection(page: Page) {
   return page.locator("section", { has: page.getByRole("heading", { name: "Sân nổi bật" }) });
@@ -35,9 +34,14 @@ test("anonymous: no hearts on the homepage; login link on the venue detail", asy
 
 test("signed-in: favorite toggled on detail hydrates the homepage heart and the button state", async ({ page }) => {
   await loginAsPlayer(page);
+  await page.goto("/");
+  const featuredLink = featuredSection(page).locator('article h3 a').first();
+  await expect(featuredLink).toBeVisible();
+  const detailUrl = await featuredLink.getAttribute("href");
+  expect(detailUrl).toMatch(/^\/venues\//);
 
   // Save the venue from its detail page (same POST endpoint as before).
-  await page.goto(`/venues/${VENUE_SLUG}`);
+  await page.goto(detailUrl!);
   const saveButton = page.getByRole("button", { name: "Lưu yêu thích" });
   await expect(saveButton).toBeVisible();
   await saveButton.click();
@@ -47,12 +51,12 @@ test("signed-in: favorite toggled on detail hydrates the homepage heart and the 
   // purely from client hydration against /api/me/favorites.
   await page.goto("/");
   const section = featuredSection(page);
-  const card = section.locator("article", { hasText: VENUE_NAME });
+  const card = section.locator("article", { has: page.locator(`a[href="${detailUrl}"]`) });
   await expect(card.locator("svg.fill-red-500")).toBeVisible();
 
   // Back on the detail page, the button must come up already-saved
   // (hydrated), without any click.
-  await page.goto(`/venues/${VENUE_SLUG}`);
+  await page.goto(detailUrl!);
   await expect(page.getByRole("button", { name: "Đã lưu yêu thích" })).toBeVisible();
 
   // Cleanup: unsave so the seeded DB returns to its pristine state.

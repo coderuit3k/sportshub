@@ -1,4 +1,15 @@
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
+
+async function openMap(page: Page) {
+  const toggle = page.getByRole("link", { name: "Bản đồ" });
+  await expect(toggle).toHaveAttribute("href", /view=map/);
+  // Hydration can replace the link between mousedown and mouseup.
+  await expect(async () => {
+    await toggle.click();
+    await expect(page).toHaveURL(/view=map/, { timeout: 2000 });
+  }).toPass({ timeout: 15000 });
+}
 
 /**
  * /venues map view: the segmented toggle swaps the card grid for a
@@ -13,7 +24,7 @@ test("venues map view renders the Leaflet map with markers", async ({ page }) =>
   await expect(page.locator("article").first()).toBeVisible();
   await expect(page.locator(".leaflet-container")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Bản đồ" }).click();
+  await openMap(page);
   await expect(page).toHaveURL(/view=map/);
 
   const map = page.locator(".leaflet-container");
@@ -49,7 +60,7 @@ test("venues map view renders the Leaflet map with markers", async ({ page }) =>
 
 test("map view keeps the active filters in the toggle and form", async ({ page }) => {
   await page.goto("/venues?sport=cau-long");
-  await page.getByRole("link", { name: "Bản đồ" }).click();
+  await openMap(page);
   await expect(page).toHaveURL(/view=map/);
   await expect(page).toHaveURL(/sport=cau-long/);
   await expect(page.locator(".leaflet-container")).toBeVisible();
