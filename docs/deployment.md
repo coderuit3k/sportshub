@@ -1,31 +1,56 @@
 # Deployment
 
-## Local
-See README quick start. SQLite file DB, `npm run dev` or `npm run build && npm run start`.
+## Local and CI
 
-## Production (target)
-1. Provision managed PostgreSQL; optionally `docker compose up -d db` for self-hosted parity.
-2. Use `prisma/schema.postgresql.prisma` (docs/database.md migration path incl. the tstzrange exclusion constraint).
-3. Env: `DATABASE_URL` (postgres), `AUTH_SECRET` (≥32 random chars), `NEXT_PUBLIC_APP_URL`.
-4. `npx prisma migrate deploy` → `npm run build` → `npm run start` (or a Next.js hosting platform).
-5. Do NOT seed production with dev accounts. Create the first admin via a one-off script and rotate credentials.
-6. Configure a real payment provider (VietQR/MoMo) behind `src/lib/payments` before claiming payments work; until then UI must keep the SIMULATED label.
+Use Node.js 22+, PostgreSQL with PostGIS/btree_gist; Prisma stays 6.19.3.
+The default schema is PostgreSQL. Development uses a separate `_dev` DB;
+TEST_DATABASE_URL and E2E_DATABASE_URL must point to `_test` databases.
+Never use existing production data for tests, seed or schema-push verification.
 
-## Unverified in this environment
-Production PostgreSQL deployment itself was not executed here (no Postgres/Docker on the VM); the SQLite build, seed, tests, typecheck and production `next build` are the verified gates — see docs/master-prompt.md checklist.
+`npm test` creates/drops a random PG schema per integration suite and applies
+booking exclusion constraints. Missing configuration fails instead of skipping.
+`npm run test:e2e` creates a fresh schema, seeds the real catalog plus a browser-only
+community session, builds into `.next-e2e`, runs Chromium on local port 3100, then
+removes its schema/build cache. It does not reuse another server.
 
-## Vercel production (verified flow, added 2026-10-23)
+CI uses a disposable PostGIS service: exact lockfile install, typecheck, both
+business timezone suites, scripted eval and E2E. Paid models are not invoked.
+Failure artifacts contain synthetic data and expire after seven days.
 
-- Project `sportshub` is linked to this GitHub repo; production domain: https://sportshub-pi-five.vercel.app
-- Database: Neon (`sportshub-db`, Singapore) connected through the Vercel integration, which injects `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_PRISMA_URL`, etc. (production + preview). No realtime add-on is used.
-- `AUTH_SECRET` and `NEXT_PUBLIC_APP_URL` are set as project env vars (all targets).
-- `vercel.json` overrides the build command so every production build:
-  1. generates the Prisma client from `prisma/schema.postgresql.prisma`,
-  2. runs `prisma db push` over the UNPOOLED connection,
-  3. runs `prisma/deploy-db.ts` — ensures the `booking_no_overlap_active` tsrange exclusion constraint, and seeds ONLY if the database is empty,
-  4. runs `next build`.
-  Catalog sync preserves owner-created venues and never deletes a venue with
-  any booking, including cancelled bookings. If a sample or stale Google venue
-  has booking history, the build fails and reports its slug; resolve that case
-  through a reviewed data plan, not by deleting booking records. Confirm a
-  backup and rollback plan before changing the production catalog.
+## Vercel approval gate
+
+GitHub environment `vercel` requires reviewer `coderuit3k`, only accepts branch
+`main`, and disables admin bypass. Self-review is allowed so the designated owner
+can approve a workflow they triggered. The agent never approves deployment jobs.
+
+Store VERCEL_TOKEN and VERCEL_PROJECT_ID in environment secrets. VERCEL_ORG_ID is
+optional when a team scope is required. The read-only project lookup checks the
+exact ID/name `sportshub`, discovers accountId and writes local link metadata.
+It does not create a project or change Vercel environment variables.
+
+Manual `Vercel CD` dispatch only checks credentials, behind the owner gate.
+A successful CI push on main can build/deploy, also behind that gate. PR runs,
+failed CI and stale releases cannot deploy. The approved SHA must equal current
+main before build and again before deploy.
+
+Git auto-deploy is disabled. Pinned Vercel CLI 65.8.0 pulls production configuration,
+builds and deploys prebuilt output. The build generates the PG client and runs
+Next.js; it performs no db push, seed, catalog sync or photo migration.
+
+## Rollout and rollback
+
+Test the integrated candidate first. Merge the Git auto-deploy-disable change
+before the existing reviewed PRs, PostgreSQL changes, E2E setup and CI/CD.
+Retarget stacked PRs as dependencies reach main; require green final CI and owner
+approval before production CD. Existing production data is retained.
+
+The prior PostgreSQL schema and the canonical schema have identical models:
+Prisma reports an empty migration. Future DDL/data changes require a backup and
+separate rollout/rollback review. `prisma/deploy-db.ts` remains a maintenance
+script with data/storage side effects and is removed from the build chain.
+
+Roll back application code to the previous known-good Vercel deployment through
+the approved path. Source revert does not reverse data changes; never reset or
+reseed production as rollback. Payment/email remain simulated. Dependency
+advisories remain a separate release review item; functional tests do not prove
+zero vulnerabilities or commercial readiness.

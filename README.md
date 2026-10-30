@@ -16,7 +16,7 @@ explains reviews, checks schedules and prepares bookings.
 ## Stack
 
 - Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind CSS 3
-- Prisma ORM **6.19.3 (pinned exactly)** — SQLite for local dev, PostgreSQL
+- Prisma ORM **6.19.3 (pinned exactly)** — PostgreSQL for local dev, tests and
   in production (`prisma/schema.postgresql.prisma`, hosted on Neon,
   Singapore region). The pin matters: Prisma 7's CLI rejects this schema's
   datasource syntax, so do not "upgrade" the CLI casually.
@@ -163,18 +163,18 @@ npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5 --sport cau-long
 
 See `docs/geo-radius.md` for the SQL and the rationale.
 
-## Quick start (local, core app — SQLite)
+## Quick start (PostgreSQL)
 
-Requirements: **Node.js 20+** and Git. No database server needed.
+Requirements: **Node.js 22+**, Git, PostgreSQL with PostGIS/btree_gist. Use a separate database ending `_dev` for local development and `_test` for automated tests.
 
 ```bash
 git clone https://github.com/coderuit3k/sportshub.git
 cd sportshub
 npm ci                      # exact lockfile install (Prisma is pinned to 6.19.3)
-cp .env.example .env        # defaults already point at a local SQLite file
+cp .env.example .env        # configure local PostgreSQL dev/test URLs
 npx prisma generate
 npx prisma db push
-npm run db:seed             # ~1 min: dev accounts + the same 119-venue real catalog
+ALLOW_DESTRUCTIVE_SEED=true npm run db:seed # local _dev/_test database only
 npm run dev                 # http://localhost:3000
 ```
 
@@ -211,7 +211,7 @@ that region. Without credentials the `/assistant` page renders but the
 first turn returns a typed configuration error — there is no fake
 fallback model.
 
-### PostgreSQL + PostGIS (radius search)
+### Enable PostGIS radius search
 
 Install PostgreSQL 16 with PostGIS 3 (Ubuntu: `postgresql-16-postgis-3`),
 create a database/user, and set a **real** `DATABASE_URL` in `.env`
@@ -223,15 +223,15 @@ DATABASE_URL=[SECURITY_DATA]
 ```
 
 ```bash
-npx prisma generate --schema prisma/schema.postgresql.prisma
-npx prisma db push --schema prisma/schema.postgresql.prisma
-npm run db:seed
+npm run db:generate
+npm run db:push
+ALLOW_DESTRUCTIVE_SEED=true npm run db:seed
 npm run db:postgis
 npm run venues:near -- --lat 10.8503 --lng 106.7553 --radius 5
 ```
 
 (The helper scripts read `.env` themselves; no shell export needed.
-PostGIS does not exist on SQLite — that path is PostgreSQL-only.)
+All runtime and test database paths use PostgreSQL.)
 
 ### Photo uploads (Cloudflare R2) & rate limiting (Upstash)
 
@@ -259,7 +259,7 @@ fallback to shared Upstash counters. Details in the env table below.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | yes | SQLite file locally; pooled Neon URL in production |
+| `DATABASE_URL` | yes | PostgreSQL _dev locally; pooled Neon URL in production |
 | `DATABASE_URL_UNPOOLED` | prod | Direct Neon connection used by build-time db push |
 | `AUTH_SECRET` | yes | JWT signing secret |
 | `NEXT_PUBLIC_APP_URL` | yes | Public base URL of the deployment |
@@ -277,9 +277,9 @@ See `.env.example` for the full annotated list. Never commit real values.
 |---|---|
 | `npm run dev` / `npm run build` / `npm run start` | Dev server / production build / serve build |
 | `npm run typecheck` | `tsc --noEmit` (strict) |
-| `npm test` | Vitest suite — **299 passed / 10 skipped** (PostgreSQL-gated tests skip without a PG URL) |
-| `npm run test:e2e` | Playwright (some legacy specs still reference the retired fictional catalog) |
-| `npm run db:generate` / `npm run db:push` | Prisma client / schema push (SQLite schema by default) |
+| `npm test` | Vitest suite; TEST_DATABASE_URL required, isolated PostgreSQL schemas, no PG skips |
+| `npm run test:e2e` | Playwright with isolated PostgreSQL schema and build cache; real catalog fixtures |
+| `npm run db:generate` / `npm run db:push` | PostgreSQL Prisma client / schema push (dev only) |
 | `npm run db:seed` | Destructive reseed: dev accounts + real catalog |
 | `npm run db:postgis` | Enable PostGIS + report status (PostgreSQL only) |
 | `npm run venues:near -- --lat … --lng … --radius … [--sport …]` | Radius search over venue coordinates |
@@ -287,20 +287,19 @@ See `.env.example` for the full annotated list. Never commit real values.
 
 ## Deployment
 
-Vercel (project `sportshub`), build chain in `vercel.json`:
-generate the PostgreSQL Prisma client → `db push` over the unpooled
-Neon URL → `prisma/deploy-db.ts` (booking exclusion constraint,
-`ensureRealCatalog()`, `ensurePostgis()` — each idempotent and
-failure-isolated where a failure must not block the site) →
-`next build`. Environment variables live in the Vercel project
-(sensitive values are write-only there and are never in this repo).
+Vercel project `sportshub`: CI tests PostgreSQL/PostGIS and browser journeys. CD
+runs only for a successful CI push on the current `main` commit and waits for
+`coderuit3k` to approve environment `vercel`. Manual CD dispatch checks credentials
+only. Git auto-deploy is disabled; the build generates the PG client and builds
+Next.js without schema push, catalog sync, seed or photo migration.
+See `docs/deployment.md` for setup, release gates and rollback.
 
 ## Documentation
 
 | Doc | Contents |
 |---|---|
 | `docs/architecture.md` | System design, image storage setup |
-| `docs/database.md` | Schemas (SQLite/PostgreSQL), booking constraint |
+| `docs/database.md` | PostgreSQL schema, isolated test fixtures, booking constraint |
 | `docs/api.md` | HTTP API surface |
 | `docs/deployment.md` | Deploy & operations |
 | `docs/security.md` | Auth, RBAC, demo-account rotation |
