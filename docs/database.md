@@ -1,16 +1,21 @@
 # Database
 
-## Local vs production
-- Local/dev: SQLite via `prisma/schema.prisma` (`DATABASE_URL="file:./dev.db"`). Chosen because the dev VM has no PostgreSQL and no Docker.
-- Production: PostgreSQL via `prisma/schema.postgresql.prisma` (identical models; roles/statuses are portable `String` columns validated in the service layer). `docker-compose.yml` provides Postgres 16 for parity testing.
-- **PostgreSQL path VERIFIED end-to-end on 2026-10-23** (local VM install, PostgreSQL 16.15): `prisma db push` created all 23 tables, the exclusion constraint below was applied, seed ran (7 venues, 3 users, 6 sports, 14 facilities, 3 sessions), and the app itself passed a smoke test against PG (see "Verification evidence"). A hosted production deployment is still a separate step.
+## PostgreSQL only
 
-## Migration path to PostgreSQL
-1. `cp prisma/schema.postgresql.prisma prisma/schema.prisma` (or keep separate and run `prisma migrate --schema prisma/schema.postgresql.prisma`).
-2. Set `DATABASE_URL=postgresql://...`.
-3. `npx prisma migrate deploy` (generate the initial migration from the postgres schema first: `npx prisma migrate dev --name init`).
-4. Apply the exclusion-constraint SQL below as a raw migration (Prisma cannot express it natively).
-5. Run `npm run db:seed` only in non-production environments.
+`prisma/schema.prisma` is the PostgreSQL default for development, test and production.
+`schema.postgresql.prisma` remains a legacy PG compatibility file; new commands use
+the default schema. No data is copied from or written to SQLite.
+
+Tests require `TEST_DATABASE_URL` pointing to a database ending `_test`. Each suite
+creates a random schema, pushes the canonical schema, applies the booking exclusion
+constraint, and drops only its own schema on cleanup. Missing configuration fails
+instead of skipping. PostGIS/btree_gist extensions live in `public`.
+
+Use a separate `_dev` database for development. `db:seed` deletes data and requires
+`ALLOW_DESTRUCTIVE_SEED=true`; it refuses production and databases without a `_dev`
+or `_test` suffix. Never point tests/seed at the existing production database.
+Production builds no longer run DDL/catalog/seed operations. Review schema changes
+with a backup/rollout/rollback plan separately from application deployment.
 
 ## Double-booking prevention — production (PostgreSQL)
 Application layer already: overlap check inside a Prisma `$transaction`, active statuses = `PENDING, CONFIRMED`, plus a unique `idempotencyKey`.
@@ -32,7 +37,7 @@ Range-type note (learned by actually applying it, 2026-10-23): Prisma maps `Date
 
 How cancelled/expired bookings are excluded: the constraint is **partial** — the `WHERE` clause restricts it to active bookings only (`PENDING`, `CONFIRMED`). Rows in `CANCELLED`, `REJECTED`, `EXPIRED`, or `COMPLETED` are not indexed by the constraint, so their time ranges never block new bookings. When a booking transitions out of an active status, PostgreSQL automatically removes it from the partial constraint's scope.
 
-On SQLite this gist constraint does not exist; the transactional overlap check in `src/services/bookings.ts` is the enforcement mechanism there (serializable-enough for the single-process dev workload; documented limitation).
+The same constraint is applied to automated test schemas. Concurrent insert tests verify overlap exclusion and cancellation releasing the time range.
 
 ## Verification evidence — PostgreSQL run (2026-10-23, PostgreSQL 16.15)
 - Install: `apt-get install postgresql postgresql-contrib` → `psql (PostgreSQL) 16.15`; dev-only role/db `sportshub` on the local VM.
@@ -46,4 +51,4 @@ On SQLite this gist constraint does not exist; the transactional overlap check i
 - `Favorite @@unique(userId, venueId)`, `SessionParticipant @@unique(sessionId, userId)`, `Booking.idempotencyKey @unique`, `IdempotencyKey.key @unique`, `Venue.slug @unique`, `Booking.reference @unique`.
 - Indexes: Venue(city, district), Venue(status), Booking(userId, startAt), Booking(facilityId, status), SportsSession(sportId, venueId, startAt), Review(venueId), Notification(userId, isRead).
 - Timestamps stored as given by the server (UTC in production); displayed converted to Asia/Ho_Chi_Minh.
-- `priceSnapshot` / `policySnapshot` are JSON strings (SQLite has no Prisma Json type) — parsed at read time.
+- `priceSnapshot` / `policySnapshot` are JSON strings (the existing storage contract is preserved) — parsed at read time.

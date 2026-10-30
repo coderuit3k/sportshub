@@ -1,28 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
-import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { createTestDb } from "./db";
 import { changeSessionParticipation } from "@/services/sessions";
 
-const repoRoot = path.resolve(__dirname, "..");
-const tempDir = mkdtempSync(path.join(tmpdir(), "sportshub-session-join-"));
-const dbUrl = `file:${path.join(tempDir, "test.db")}`;
+let fixture: Awaited<ReturnType<typeof createTestDb>>;
 let first: PrismaClient;
 let second: PrismaClient;
 
 beforeAll(async () => {
-  const engineDir = path.join(repoRoot, "node_modules", "@prisma", "engines");
-  const engine = readdirSync(engineDir).find((name) => name.startsWith("schema-engine-") && !name.endsWith(".md"));
-  execSync("npx prisma db push --skip-generate --schema prisma/schema.prisma", {
-    cwd: repoRoot,
-    stdio: "pipe",
-    env: { ...process.env, DATABASE_URL: dbUrl, CHECKPOINT_DISABLE: "1",
-      ...(engine && existsSync(path.join(engineDir, engine)) ? { PRISMA_SCHEMA_ENGINE_BINARY: path.join(engineDir, engine) } : {}) },
-  });
-  first = new PrismaClient({ datasources: { db: { url: dbUrl } } });
-  second = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  fixture = await createTestDb();
+  first = fixture.db;
+  second = new PrismaClient({ datasources: { db: { url: fixture.url } } });
   await first.sport.create({ data: { id: "sport-1", name: "Cầu lông", slug: "cau-long" } });
   await first.user.createMany({ data: [
     { id: "organizer", name: "Organizer", email: "organizer@test.local", passwordHash: "x" },
@@ -37,11 +25,11 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  await Promise.all([first?.$disconnect(), second?.$disconnect()]);
-  rmSync(tempDir, { recursive: true, force: true });
+  await second?.$disconnect();
+  await fixture?.cleanup();
 });
 
-describe("session join on SQLite", () => {
+describe("session join on PostgreSQL", () => {
   it("never stores more than the capacity when two clients join the last spot", async () => {
     const results = await Promise.allSettled([
       changeSessionParticipation("session-1", "player-a", "join", first),

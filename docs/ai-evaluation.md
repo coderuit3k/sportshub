@@ -1,5 +1,9 @@
 # AI assistant — evaluation report
 
+Current test/benchmark fixtures use isolated PostgreSQL schemas via
+`TEST_DATABASE_URL`; PG suites no longer skip. The dated measurements below
+are historical and retain their original database conditions.
+
 Measured on 2026-10-27/28 in this workspace (local machine, fixture
 databases), plus a live production battery on 2026-10-28 (§5).
 Conditions are stated next to every number.

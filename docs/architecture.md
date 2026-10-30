@@ -17,7 +17,7 @@ src/
     payments/     # provider abstraction — SimulatedPaymentProvider only
     notifications.ts  # in-app notifications with dedupeKey
   middleware.ts   # protects /my-bookings, /profile, /owner, /admin, /favorites, /notifications; role gates
-prisma/           # schema.prisma (SQLite), schema.postgresql.prisma, seed.ts
+prisma/           # schema.prisma (PostgreSQL), seed.ts, booking-constraint.ts
 tests/            # Vitest unit tests for pure logic
 ```
 

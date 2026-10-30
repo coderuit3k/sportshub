@@ -49,24 +49,13 @@ import { execSync } from "node:child_process";
 import { ensureRealCatalog } from "./real-catalog";
 import { migrateVenuePhotosToStorage } from "./photo-migration";
 import { ensurePostgis } from "./postgis";
+import { ensureBookingConstraint } from "./booking-constraint";
 
 const prisma = new PrismaClient();
 
 async function ensureConstraint(): Promise<void> {
-  const rows = await prisma.$queryRawUnsafe<Array<{ n: number }>>(
-    "SELECT COUNT(*)::int AS n FROM pg_constraint WHERE conname = 'booking_no_overlap_active'",
-  );
-  if (rows[0]?.n === 0) {
-    await prisma.$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS btree_gist");
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "Booking" ADD CONSTRAINT booking_no_overlap_active ` +
-        `EXCLUDE USING gist ("facilityId" WITH =, tsrange("startAt", "endAt") WITH &&) ` +
-        `WHERE ("status" IN ('PENDING', 'CONFIRMED'))`,
-    );
-    console.log("[deploy-db] exclusion constraint created");
-  } else {
-    console.log("[deploy-db] exclusion constraint already present — skipped");
-  }
+  await ensureBookingConstraint(prisma);
+  console.log("[deploy-db] exclusion constraint ensured");
 }
 
 async function seedIfEmpty(): Promise<void> {

@@ -194,7 +194,7 @@ async function main() {
     ranAt: new Date().toISOString(),
     model: model.id,
     provider: cfg.providerKind,
-    fixture: "tests/ai/fixtures.ts (SQLite throwaway DB)",
+    fixture: "tests/ai/fixtures.ts (PostgreSQL isolated test schema)",
     total: results.length,
     safetyPassed: results.filter((r) => r.safetyPass).length,
     outcomes,

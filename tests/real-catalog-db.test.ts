@@ -1,31 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
-import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { createTestDb } from "./db";
 import { ensureRealCatalog } from "../prisma/real-catalog";
 import { REAL_GOOGLE_REVIEWS } from "../prisma/real-reviews-data";
 
 /**
  * Importer integration test: ensureRealCatalog against a throwaway
- * SQLite database (created with `prisma db push` in a temp dir).
+ * PostgreSQL schema (created with `prisma db push` in a test database).
  * Covers the sample-to-real swap (fictional purge + 119 real inserts),
  * idempotence, owner-venue preservation, and the booking guard: any
  * booking, including CANCELLED, prevents catalog deletion of its venue
  * and financial history.
  */
 
-const REPO_ROOT = path.resolve(__dirname, "..");
-const tmpDir = mkdtempSync(path.join(tmpdir(), "sportshub-real-catalog-"));
-const dbPath = path.join(tmpDir, "test.db");
-const dbUrl = `file:${dbPath}`;
-
-function schemaEngineBinary(): string | undefined {
-  const dir = path.join(REPO_ROOT, "node_modules", "@prisma", "engines");
-  const found = readdirSync(dir).find((f) => f.startsWith("schema-engine-") && !f.endsWith(".md"));
-  return found ? path.join(dir, found) : undefined;
-}
+let fixture: Awaited<ReturnType<typeof createTestDb>>;
 
 let prisma: PrismaClient;
 let ownerId: string;
@@ -46,18 +34,8 @@ async function makeFictionalVenue(slug: string, source = "sample"): Promise<stri
 }
 
 beforeAll(async () => {
-  const engine = schemaEngineBinary();
-  execSync("npx prisma db push --skip-generate --schema prisma/schema.prisma", {
-    cwd: REPO_ROOT,
-    stdio: "pipe",
-    env: {
-      ...process.env,
-      DATABASE_URL: dbUrl,
-      CHECKPOINT_DISABLE: "1",
-      ...(engine && existsSync(engine) ? { PRISMA_SCHEMA_ENGINE_BINARY: engine } : {}),
-    },
-  });
-  prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  fixture = await createTestDb();
+  prisma = fixture.db;
   const owner = await prisma.user.create({
     data: {
       email: "owner@sportshub.local",
@@ -70,8 +48,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  await prisma?.$disconnect();
-  rmSync(tmpDir, { recursive: true, force: true });
+  await fixture?.cleanup();
 });
 
 describe("ensureRealCatalog", () => {

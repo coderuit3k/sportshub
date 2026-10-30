@@ -1,8 +1,6 @@
 /**
- * PostGIS radius-search tests — PostgreSQL-gated like the AI PG tests
- * (tests/ai/tools.pg.test.ts). They run against a THROWAWAY database
- * only, selected by GEO_TEST_PG_URL (falling back to AI_TEST_PG_URL),
- * and are skipped everywhere else — including CI without PG.
+ * PostGIS radius-search tests run against an isolated schema in the
+ * explicit TEST_DATABASE_URL database; missing test configuration fails.
  *
  * Fixture geography (centre = TP. Thủ Đức, 10.8503 / 106.7553):
  * - geo_zero  at the centre            → 0 km
@@ -12,79 +10,19 @@
  * - geo_nopos no coordinates           → never matches
  * - geo_pend  PENDING_APPROVAL at centre → never matches (not public)
  */
-import { execSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { createTestDb } from "../db";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensurePostgis } from "../../prisma/postgis";
 import { findVenuesWithinRadius } from "@/lib/geo/radius";
 
-const PG_URL = process.env.GEO_TEST_PG_URL ?? process.env.AI_TEST_PG_URL;
+const PG_URL = process.env.TEST_DATABASE_URL;
 const CENTRE = { lat: 10.8503, lng: 106.7553 };
 
 let db: PrismaClient;
 let cleanup: () => Promise<void>;
 
-async function createPgClient(connectionString: string): Promise<AiFixtureLike> {
-  // --accept-data-loss: throwaway test database only. A previous
-  // partial push can leave tables behind, and Prisma then warns about
-  // adding unique constraints to existing tables; on a truly empty
-  // database the flag changes nothing.
-  execSync("npx prisma db push --skip-generate --accept-data-loss --schema prisma/schema.postgresql.prisma", {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: connectionString },
-    stdio: "pipe",
-  });
-  const dir = mkdtempSync(path.join(tmpdir(), "sportshub-geo-client-"));
-  const clientOut = path.join(dir, "client");
-  const schemaPath = path.join(process.cwd(), "prisma/.geo-test-schema.prisma");
-  const pgSchema = readFileSync(
-    path.join(process.cwd(), "prisma/schema.postgresql.prisma"),
-    "utf8",
-  ).replace(
-    'provider = "prisma-client-js"',
-    `provider = "prisma-client-js"\n  output   = "${clientOut}"`,
-  );
-  writeFileSync(schemaPath, pgSchema);
-  try {
-    execSync(`npx prisma generate --schema ${schemaPath}`, {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        DATABASE_URL: connectionString,
-        PRISMA_QUERY_ENGINE_LIBRARY: path.join(
-          process.cwd(),
-          "node_modules/@prisma/engines/libquery_engine-debian-openssl-3.0.x.so.node",
-        ),
-        PRISMA_SCHEMA_ENGINE_BINARY: path.join(
-          process.cwd(),
-          "node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x",
-        ),
-      },
-      stdio: "pipe",
-    });
-  } finally {
-    rmSync(schemaPath, { force: true });
-  }
-  const pgModule = (await import(clientOut)) as { PrismaClient: typeof PrismaClient };
-  const client = new pgModule.PrismaClient({
-    datasources: { db: { url: connectionString } },
-  }) as unknown as PrismaClient;
-  return {
-    db: client,
-    cleanup: async () => {
-      await client.$disconnect().catch(() => undefined);
-      rmSync(dir, { recursive: true, force: true });
-    },
-  };
-}
-
-interface AiFixtureLike {
-  db: PrismaClient;
-  cleanup: () => Promise<void>;
-}
+const createPgClient = createTestDb;
 
 async function seed(db: PrismaClient): Promise<void> {
   await db.venue.deleteMany({ where: { id: { startsWith: "geo_" } } });
@@ -119,7 +57,7 @@ async function seed(db: PrismaClient): Promise<void> {
   await db.venueSport.create({ data: { venueId: "geo_zero", sportId: badminton.id } });
 }
 
-describe.skipIf(!PG_URL)("postgis radius search (PostgreSQL)", () => {
+describe("postgis radius search (PostgreSQL)", () => {
   beforeAll(async () => {
     const f = await createPgClient(PG_URL!);
     db = f.db;
@@ -128,9 +66,7 @@ describe.skipIf(!PG_URL)("postgis radius search (PostgreSQL)", () => {
     await seed(db);
   }, 180_000);
   afterAll(async () => {
-    await db.venue.deleteMany({ where: { id: { startsWith: "geo_" } } });
-    await db.user.deleteMany({ where: { email: "geo-owner@test.local" } });
-    await cleanup();
+    await cleanup?.();
   });
 
   it("ensurePostgis installs the extension — idempotently", async () => {

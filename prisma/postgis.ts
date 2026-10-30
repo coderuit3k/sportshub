@@ -32,7 +32,7 @@ export interface PostgisStatus {
 }
 
 export async function ensurePostgis(db: PrismaClient): Promise<PostgisStatus> {
-  await db.$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS postgis");
+  await db.$executeRawUnsafe("CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public");
   return postgisStatus(db);
 }
 
