@@ -583,6 +583,272 @@ describe("orchestrator — grounding (audit A)", () => {
   });
 });
 
+describe("orchestrator — operating hours grounding (AI-039)", () => {
+  const hoursAnswer = (message: string, venueIds: string[] = []) => J({
+    kind: "final", answer: { type: "limited_answer", message, venueIds,
+      evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] },
+  });
+
+  it("rejects exact opening hours when no profile was checked", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Sân Minh Khai Thủ Đức mở cửa từ 06:00 đến 22:00 hàng ngày.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?",
+      model: scripted([bad, bad]), db, cfg: cfg({ maxModelRounds: 2 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.fallbackUsed).toBe(true);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("accepts the hours returned by the profile for the named venue", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { query: "Minh Khai", district: "Thủ Đức", limit: 5 } }),
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      hoursAnswer("Sân Minh Khai Thủ Đức mở cửa 06:00–22:00 hàng ngày; giờ được chuẩn hóa từ Google.", ["v_thuduc"]),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.validation.grounding.status).toBe("passed");
+    expect(res.trace.toolCalls.map((call) => call.tool)).toEqual(["search_venues", "get_venue_profile"]);
+    expect(res.answer.warnings.join(" ")).toContain("giờ mở cửa được chuẩn hoá");
+  });
+
+  it("accepts a limited hours answer from a directly fetched profile", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      hoursAnswer("Sân Minh Khai (12 Võ Văn Ngân, Thủ Đức) mở cửa 06:00–22:00 hàng ngày.", ["v_thuduc"]),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls.map((call) => call.tool)).toEqual(["get_venue_profile"]);
+  });
+
+  it("does not borrow an address number from another venue", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Sân Minh Khai Thủ Đức (99 Nguyễn Thị Thập) mở cửa 06:00–22:00 hàng ngày.", ["v_thuduc"]);
+    const model = scripted([
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", model, db,
+      cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("số 99");
+  });
+
+  it("rejects hours for a different venue named in prose despite a valid structural ID", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Sân Minh Khai Quận 7 mở cửa 06:00–22:00 hàng ngày.", ["v_thuduc"]);
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 5 } }),
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Quận 7 mở cửa mấy giờ?", model, db,
+      cfg: cfg({ maxModelRounds: 4 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("sân khác");
+  });
+
+  it("rejects another known venue name even when no district is stated", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Sân Cầu Lông Linh Xuân mở cửa 06:00–22:00 hàng ngày.", ["v_thuduc"]);
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 5 } }),
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Linh Xuân mở cửa mấy giờ?", model, db,
+      cfg: cfg({ maxModelRounds: 4 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("sân khác");
+  });
+
+  it("accepts a verified venue with an empty district when its profile identifies the area", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_linhxuan" } }),
+      hoursAnswer("Sân Cầu Lông Linh Xuân Thủ Đức mở cửa 06:00–22:00 hàng ngày.", ["v_linhxuan"]),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Linh Xuân Thủ Đức mở cửa mấy giờ?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("rejects an English opening-hours claim without a profile", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Sân Minh Khai is open from 06:00 to 22:00 daily.");
+    const res = await runAssistantTurn({ userMessage: "When is Minh Khai open?", db,
+      model: scripted([bad, bad]), cfg: cfg({ maxModelRounds: 2 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("rejects hours that differ from the checked profile", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Sân Minh Khai Thủ Đức mở cửa 06:00–23:00 hàng ngày, đúng không?", ["v_thuduc"]);
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { query: "Minh Khai", district: "Thủ Đức", limit: 5 } }),
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", model, db, cfg: cfg({ maxModelRounds: 4 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("checks the claimed weekday instead of borrowing another day's hours", async () => {
+    await db.operatingHour.updateMany({ where: { venueId: "v_thuduc", dayOfWeek: 6 },
+      data: { openTime: "07:00", closeTime: "20:00" } });
+    try {
+      const run = (message: string) => runAssistantTurn({ userMessage: "Thứ Bảy sân Minh Khai Thủ Đức mở cửa mấy giờ?", db,
+        model: scripted([
+          J({ kind: "tool_call", tool: "search_venues", input: { query: "Minh Khai", district: "Thủ Đức", limit: 5 } }),
+          J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+          hoursAnswer(message, ["v_thuduc"]),
+        ]), cfg: cfg() });
+      __resetConversations();
+      expect((await run("Sân Minh Khai Thủ Đức mở cửa 07:00–20:00 thứ Bảy.")).trace.validation.answerValid).toBe(true);
+      __resetConversations();
+      const wrong = await run("Sân Minh Khai Thủ Đức mở cửa 07:00–20:00 hàng ngày.");
+      expect(wrong.trace.validation.answerValid).toBe(false);
+      expect(wrong.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+    } finally {
+      await db.operatingHour.updateMany({ where: { venueId: "v_thuduc", dayOfWeek: 6 },
+        data: { openTime: "06:00", closeTime: "22:00" } });
+    }
+  });
+
+  it("does not validate a Monday–Friday range using Monday alone", async () => {
+    await db.operatingHour.updateMany({ where: { venueId: "v_thuduc", dayOfWeek: 5 }, data: { closeTime: "20:00" } });
+    try {
+      __resetConversations();
+      const bad = hoursAnswer("Sân Minh Khai Thủ Đức mở cửa 06:00–22:00 từ thứ Hai đến thứ Sáu.", ["v_thuduc"]);
+      const model = scripted([
+        J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+        bad, bad,
+      ]);
+      const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa từ thứ Hai đến thứ Sáu mấy giờ?",
+        model, db, cfg: cfg({ maxModelRounds: 3 }) });
+      expect(res.trace.validation.answerValid).toBe(false);
+      expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("nhiều ngày");
+    } finally {
+      await db.operatingHour.updateMany({ where: { venueId: "v_thuduc", dayOfWeek: 5 }, data: { closeTime: "22:00" } });
+    }
+  });
+
+  it("checks all seven days when the claim says daily despite naming Saturday", async () => {
+    await db.operatingHour.updateMany({ where: { venueId: "v_thuduc", dayOfWeek: 6 },
+      data: { openTime: "07:00", closeTime: "20:00" } });
+    try {
+      __resetConversations();
+      const bad = hoursAnswer("Sân Minh Khai Thủ Đức mở cửa 07:00–20:00 hàng ngày, kể cả thứ Bảy.", ["v_thuduc"]);
+      const model = scripted([
+        J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+        bad, bad,
+      ]);
+      const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa hàng ngày mấy giờ?",
+        model, db, cfg: cfg({ maxModelRounds: 3 }) });
+      expect(res.trace.validation.answerValid).toBe(false);
+      expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+    } finally {
+      await db.operatingHour.updateMany({ where: { venueId: "v_thuduc", dayOfWeek: 6 },
+        data: { openTime: "06:00", closeTime: "22:00" } });
+    }
+  });
+
+  it("accepts a separate imported-hours provenance caveat after verified hours", async () => {
+    __resetConversations();
+    const model = scripted([
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      hoursAnswer("Sân Minh Khai Thủ Đức mở cửa 06:00–22:00 hàng ngày. Giờ mở cửa được chuẩn hoá từ Google và có thể khác thực tế.", ["v_thuduc"]),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("does not let an imported-hours caveat hide an all-day claim", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Giờ mở cửa được chuẩn hoá từ Google, sân mở cửa cả ngày.", ["v_thuduc"]);
+    const model = scripted([
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", model, db,
+      cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("does not reuse another venue's profile after the user changes venue", async () => {
+    __resetConversations();
+    const first = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", db, cfg: cfg(), model: scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 5 } }),
+      J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+      J({ kind: "final", statePatch: { venueIds: ["v_thuduc"] }, answer: {
+        type: "limited_answer", message: "Sân Minh Khai Thủ Đức mở cửa 06:00–22:00 hàng ngày.",
+        venueIds: ["v_thuduc"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+      } }),
+    ]) });
+    expect(first.trace.validation.answerValid).toBe(true);
+    const bad = J({ kind: "final", statePatch: { venueIds: ["v_quan7"] }, answer: {
+      type: "limited_answer", message: "Sân Minh Khai Quận 7 mở cửa 06:00–22:00 hàng ngày.",
+      venueIds: ["v_quan7"], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+    } });
+    const second = await runAssistantTurn({ conversationId: first.conversationId,
+      userMessage: "Còn sân Minh Khai Quận 7 mở cửa mấy giờ?", model: scripted([bad, bad]), db,
+      cfg: cfg({ maxModelRounds: 2 }) });
+    expect(second.trace.validation.answerValid).toBe(false);
+    expect(second.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("does not reuse a profile from an earlier turn even for the same venue", async () => {
+    __resetConversations();
+    const answer = hoursAnswer("Sân Minh Khai Thủ Đức mở cửa 06:00–22:00 hàng ngày.", ["v_thuduc"]);
+    const first = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức mở cửa mấy giờ?", db, cfg: cfg(),
+      model: scripted([
+        J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } }),
+        answer,
+      ]) });
+    expect(first.trace.validation.answerValid).toBe(true);
+    const second = await runAssistantTurn({ conversationId: first.conversationId,
+      userMessage: "Giờ mở cửa sân đó vẫn vậy chứ?", db, cfg: cfg({ maxModelRounds: 2 }),
+      model: scripted([answer, answer]) });
+    expect(second.trace.validation.answerValid).toBe(false);
+    expect(second.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("allows an honest unknown-hours answer without a profile", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Sân này mở cửa mấy giờ?", db,
+      model: scripted([hoursAnswer("Tôi chưa kiểm tra được giờ mở cửa của sân này.")]), cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("allows an honest unverified-hours answer without a profile", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Sân này mở cửa mấy giờ?", db,
+      model: scripted([hoursAnswer("Giờ mở cửa chưa được xác minh.")]), cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("does not let an uncertainty phrase hide a factual hours claim", async () => {
+    __resetConversations();
+    const bad = hoursAnswer("Tôi chưa kiểm tra giờ mở cửa, nhưng sân mở cửa cả ngày.");
+    const res = await runAssistantTurn({ userMessage: "Sân này mở cửa mấy giờ?", db,
+      model: scripted([bad, bad]), cfg: cfg({ maxModelRounds: 2 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("giờ mở cửa");
+  });
+
+  it("allows a question asking which venue's hours to check", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Tôi muốn biết giờ mở cửa.", db,
+      model: scripted([hoursAnswer("Bạn muốn hỏi giờ mở cửa của sân nào?")]), cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+});
+
 describe("orchestrator — conversation ownership (audit B)", () => {
   it("another principal presenting the same conversationId sees a FRESH conversation", async () => {
     __resetConversations();
