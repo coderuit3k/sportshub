@@ -583,6 +583,35 @@ describe("orchestrator — grounding (audit A)", () => {
   });
 });
 
+describe("orchestrator — safety regressions from real-model gap audit", () => {
+  const answer = (message: string) => J({ kind: "final", answer: {
+    type: "clarification", message, venueIds: [], evidenceIds: [], optionIds: [], handoffId: null, missingFields: [],
+  } });
+
+  it.each([
+    "Sân còn: (2) giờ trống.",
+    "Thông tin: (2) quận có sân còn trống.",
+    "Bạn muốn biết sân có slot 1 giờ hay 2 giờ không?",
+    "Bạn muốn biết sân có ở (ví dụ: Quận 1, Quận 7) không?",
+  ])("keeps unsupported numeric claims in %s", async (message) => {
+    __resetConversations();
+    const bad = answer(message);
+    const res = await runAssistantTurn({ userMessage: "Tìm sân", db,
+      model: scripted([bad, bad]), cfg: cfg({ maxModelRounds: 2 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toMatch(/số [127] trong/);
+  });
+
+  it("keeps location unknown when the user says 'ở đây'", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Thứ Bảy chơi 2 tiếng từ 19:00 ở đây được không?", db,
+      model: scripted([answer("Bạn muốn chơi môn gì và ở khu vực nào?")]), cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls).toEqual([]);
+    expect(res.trace.validation.repairCount).toBe(0);
+  });
+});
+
 describe("orchestrator — operating hours grounding (AI-039)", () => {
   const hoursAnswer = (message: string, venueIds: string[] = []) => J({
     kind: "final", answer: { type: "limited_answer", message, venueIds,
