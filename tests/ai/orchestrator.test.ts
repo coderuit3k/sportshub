@@ -61,7 +61,7 @@ describe("orchestrator", () => {
     expect(res.trace.toolCalls[0].input).toMatchObject({ sportSlug: "cau-long", district: "Thủ Đức" });
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.budgetUsed).toBe(3);
-    expect(res.trace.promptVersion).toContain("v10");
+    expect(res.trace.promptVersion).toContain("v11");
   });
 
   it("rejects a hallucinated evidence id and falls back to a limited answer built from verified data", async () => {
@@ -623,7 +623,7 @@ describe("orchestrator — protocol rejection diagnostics", () => {
     expect(res.trace.validation.answerValid).toBe(true);
     expect(res.trace.validation.schemaValid).toBe(true);
     expect(res.trace.validation.lastSchemaRejection?.kind).toBe("schema");
-    expect(res.trace.validation.lastSchemaRejection?.issues).toContainEqual({ path: "answer.type", code: "invalid_enum_value" });
+    expect(res.trace.validation.lastSchemaRejection?.issues).toContainEqual({ path: "answer.type", code: "invalid_value" });
     expect(JSON.stringify(res.trace.validation)).not.toContain("PRIVATE_PAYLOAD");
   });
 
