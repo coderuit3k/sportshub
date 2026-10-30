@@ -45,9 +45,10 @@ The catalog is data-as-code and self-healing:
 - `prisma/real-venues-data.ts` — the venue set (name, address, coordinates, Google aggregates)
 - `prisma/real-reviews-data.ts` — the Google review texts, keyed by venue slug
 - `prisma/real-catalog.ts` — `ensureRealCatalog()` runs on **every production
-  build** (via `prisma/deploy-db.ts`): it retires any non-Google venue
-  (live bookings block the purge and fail the build loudly instead of losing
-  data) and re-syncs venues + reviews, so a data-only edit redeploys cleanly.
+  build** (via `prisma/deploy-db.ts`): it retires sample venues and stale
+  Google venues only when they have no bookings. Owner-created venues and
+  all booking records are preserved; a blocked retirement fails the build
+  loudly. It then re-syncs catalog venues and reviews.
   The same step ends `prisma/seed.ts`, so a fresh local DB converges to the
   identical catalog.
 

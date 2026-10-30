@@ -165,6 +165,15 @@ describe("slot aggregation for multi-hour durations", () => {
     expect(two[0].available).toBe(false);
     expect(two[1].available).toBe(true);
   });
+
+  it("keeps a missing hourly price unknown across a multi-hour quote", () => {
+    const hourly = [row(16, 120000), row(17, 180000, { price: null, available: false })];
+    expect(aggregateSlots(hourly, 2)[0]).toMatchObject({ price: null, available: false });
+  });
+
+  it("does not join hourly slots separated by closed hours", () => {
+    expect(aggregateSlots([row(1, 100000), row(5, 100000)], 2)).toEqual([]);
+  });
 });
 
 describe("facilityMinPrice", () => {

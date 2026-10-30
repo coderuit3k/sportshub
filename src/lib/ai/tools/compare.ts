@@ -163,9 +163,8 @@ export async function compareVenueOptions(
         if (availablePriced.length > 0) {
           bestOptions.set(venueId, availablePriced[0]);
           quoteOutcomes.set(venueId, { outcome: "available", errorCode: null, checkedAt: q.data.checkedAt });
-        } else if (q.data.options.some((o) => o.slotAvailable)) {
-          // A slot exists but cannot be priced — distinct from both
-          // "available" and "unavailable", and never a 0/free quote.
+        } else if (q.data.options.some((o) => o.priceStatus === "unavailable")) {
+          // A quote with unknown price is not evidence that the venue has no slots.
           bestOptions.set(venueId, null);
           quoteOutcomes.set(venueId, { outcome: "price_unavailable", errorCode: ToolErrorCode.PriceUnavailable, checkedAt: q.data.checkedAt });
         } else {

@@ -91,6 +91,7 @@
     "processing": "Processing...",
     "slotBooked": "Booked",
     "slotPast": "Already passed",
+    "priceUnavailable": "Price unavailable",
     "slotsError": "Couldn't load time slots — please try again later.",
     "statusCANCELLED": "Cancelled",
     "statusCOMPLETED": "Completed",

@@ -8,26 +8,19 @@
  *
  * Behaviour:
  * - Idempotent. The swap runs only when the database disagrees with
- *   the data: any venue with source != "google" exists, a "google"
+ *   the data: a sample venue exists, a "google"
  *   venue whose slug is not in the data set exists (stale), or the
  *   google-venue count differs from the data count. Once converged,
  *   repeat runs only re-sync the Google reviews (below).
- * - PURGE: every non-google venue (plus stale google venues) is
+ * - PURGE: sample venues (plus stale google venues) are
  *   deleted with the complete FK-closure machinery shared with the
  *   fictional catalog (catalog-store.ts → deleteRetiredVenue):
  *   per-venue transactions with TX_OPTIONS, a booking pre-scan that
- *   REFUSES venues with LIVE bookings (PENDING / CONFIRMED /
- *   COMPLETED — bookings are financial records and live ones are
- *   never deleted by a catalog step), loud per-venue failure
+ *   REFUSES venues with ANY bookings (including cancelled ones),
+ *   loud per-venue failure
  *   logging, and a throw at the end if anything was blocked or
- *   failed — a half-swapped catalog never ships silently. One
- *   deliberate difference from the owner-facing removal guard: a
- *   venue whose bookings are ALL in terminal dead states
- *   (DEAD_BOOKING_STATUSES — e.g. the CANCELLED smoke-test booking
- *   sitting on a fictional venue in production) IS purgeable; those
- *   dead booking rows, with their status history and payments, are
- *   deleted inside the same closure and counted in the summary as
- *   deadBookingsRemoved.
+ *   failed — a half-swapped catalog never ships silently. Owner-created
+ *   venues are never catalog purge targets.
  * - INSERT: missing real venues are created in one transaction each,
  *   owned by the seed owner (owner@sportshub.local, looked up — not
  *   created; if the account is absent the inserts are skipped with a
@@ -51,7 +44,6 @@ import type { PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import {
   CATALOG_OWNER_EMAIL,
-  DEAD_BOOKING_STATUSES,
   TX_OPTIONS,
   deleteRetiredVenue,
   getOrCreateSports,
@@ -209,8 +201,6 @@ async function insertRealVenue(
 export interface EnsureRealCatalogResult {
   purged: number;
   purgeBlocked: number;
-  /** Dead bookings (DEAD_BOOKING_STATUSES) deleted inside purged venues' closures. */
-  deadBookingsRemoved: number;
   inserted: number;
   skipped: number;
   googleReviews: number;
@@ -230,14 +220,13 @@ export async function ensureRealCatalog(prisma: Db): Promise<EnsureRealCatalogRe
   const allVenues = await prisma.venue.findMany({
     select: { id: true, slug: true, source: true },
   });
-  const nonGoogle = allVenues.filter((v) => v.source !== "google");
+  const sampleVenues = allVenues.filter((v) => v.source === "sample");
   const googleVenues = allVenues.filter((v) => v.source === "google");
   const staleGoogle = googleVenues.filter((v) => !dataSlugs.has(v.slug));
   const needsSwap =
-    nonGoogle.length > 0 || staleGoogle.length > 0 || googleVenues.length !== expected;
+    sampleVenues.length > 0 || staleGoogle.length > 0 || googleVenues.length !== expected;
 
   let purged = 0;
-  let deadBookingsRemoved = 0;
   let inserted = 0;
   let skipped = 0;
   const purgeBlocked: Array<{ slug: string; bookings: number }> = [];
@@ -250,21 +239,16 @@ export async function ensureRealCatalog(prisma: Db): Promise<EnsureRealCatalogRe
       `[real-catalog] catalog already converged (${expected} google venues) — swap skipped`,
     );
   } else {
-    /* ---------------- PURGE: non-google + stale google venues -------- */
-    const targets = [...nonGoogle, ...staleGoogle];
+    /* ---------------- PURGE: sample + stale google venues ------------ */
+    const targets = [...sampleVenues, ...staleGoogle];
     for (const target of targets) {
-      // Booking pre-scan (the retired-venue removal guard, with ONE
-      // deliberate difference): a venue referenced by any LIVE
-      // booking — directly or through one of its facilities — is
-      // never deleted by a catalog step. Bookings in terminal dead
-      // states (DEAD_BOOKING_STATUSES) do NOT block: they are deleted
-      // with the venue inside deleteRetiredVenue's closure (the
-      // purgeDeadBookings opt-in) and counted below.
+      // A booking references both the venue and its facility. Either
+      // path blocks catalog removal regardless of booking status.
       const facilities = await prisma.facility.findMany({
         where: { venueId: target.id },
         select: { id: true },
       });
-      const liveBookings = await prisma.booking.count({
+      const bookings = await prisma.booking.count({
         where: {
           OR: [
             { venueId: target.id },
@@ -272,26 +256,19 @@ export async function ensureRealCatalog(prisma: Db): Promise<EnsureRealCatalogRe
               ? [{ facilityId: { in: facilities.map((f) => f.id) } }]
               : []),
           ],
-          status: { notIn: [...DEAD_BOOKING_STATUSES] },
         },
       });
-      if (liveBookings > 0) {
-        purgeBlocked.push({ slug: target.slug, bookings: liveBookings });
+      if (bookings > 0) {
+        purgeBlocked.push({ slug: target.slug, bookings });
         console.error(
-          `[real-catalog] REFUSED purge of venue ${target.slug}: it has ${liveBookings} live booking(s) — manual cleanup required`,
+          `[real-catalog] REFUSED purge of venue ${target.slug}: it has ${bookings} booking(s) — manual cleanup required`,
         );
         continue;
       }
       try {
-        const { deadBookingsRemoved: removedHere } = await deleteRetiredVenue(prisma, target.id, {
-          purgeDeadBookings: true,
-        });
+        await deleteRetiredVenue(prisma, target.id);
         purged += 1;
-        deadBookingsRemoved += removedHere;
-        console.log(
-          `[real-catalog] purged venue ${target.slug} (source=${target.source})` +
-            (removedHere > 0 ? ` — removed ${removedHere} dead booking(s) with it` : ""),
-        );
+        console.log(`[real-catalog] purged venue ${target.slug} (source=${target.source})`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         purgeFailures.push({ slug: target.slug, error: message });
@@ -401,7 +378,7 @@ export async function ensureRealCatalog(prisma: Db): Promise<EnsureRealCatalogRe
   const finalGoogleVenues = await prisma.venue.count({ where: { source: "google" } });
   console.log(
     `[real-catalog] swap summary: purged=${purged} purgeBlocked=${purgeBlocked.length} ` +
-      `purgeFailed=${purgeFailures.length} deadBookingsRemoved=${deadBookingsRemoved} ` +
+      `purgeFailed=${purgeFailures.length} ` +
       `inserted=${inserted} skipped=${skipped} ` +
       `insertFailed=${insertFailures.length} googleReviews=${googleReviews} ` +
       `finalGoogleVenues=${finalGoogleVenues} expected=${expected}`,
@@ -423,7 +400,6 @@ export async function ensureRealCatalog(prisma: Db): Promise<EnsureRealCatalogRe
   return {
     purged,
     purgeBlocked: purgeBlocked.length,
-    deadBookingsRemoved,
     inserted,
     skipped,
     googleReviews,

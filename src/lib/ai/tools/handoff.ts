@@ -96,16 +96,16 @@ export async function prepareBookingHandoff(
         "Khung giờ yêu cầu không còn trong lịch (có thể ngoài giờ mở cửa hoặc đã qua).",
       );
     }
-    if (!option.slotAvailable) {
-      return errorEnvelope(
-        ToolErrorCode.SlotUnavailable,
-        "Khung giờ này vừa hết trống trong lịch SportsHub — vui lòng chọn giờ khác.",
-      );
-    }
     if (option.priceStatus !== "ok" || option.totalPrice === null) {
       return errorEnvelope(
         ToolErrorCode.PriceUnavailable,
         "Sân con này chưa có bảng giá trong hệ thống nên chưa thể chuẩn bị đặt sân.",
+      );
+    }
+    if (!option.slotAvailable) {
+      return errorEnvelope(
+        ToolErrorCode.SlotUnavailable,
+        "Khung giờ này vừa hết trống trong lịch SportsHub — vui lòng chọn giờ khác.",
       );
     }
 
