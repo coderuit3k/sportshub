@@ -598,9 +598,9 @@ function groundingProblems(
     if (!matches) problems.push("giờ mở cửa trong câu trả lời không khớp giờ hoạt động của sân/ngày từ get_venue_profile");
   }
   // shortcut: validate common refund thresholds/fees in prose; extend for new wording seen in model traces.
-  const policyQuestion = /\b(chinh sach huy|chinh sach hoan tien|hoan tien|refund|cancellation)\b/.test(foldVi(currentUserMessage ?? ""));
+  const policyQuestion = /\b(chinh sach huy|chinh sach hoan tien|hoan tien|phi huy|refund|cancellation)\b/.test(foldVi(currentUserMessage ?? ""));
   const policyInAnswer = /\b(chinh sach huy|huy truoc|hoan tien|hoan toan bo|refund|cancellation|chiu phi|phi huy)\b/.test(foldVi(draft.message));
-  for (const clause of draft.message.split(/[.!?;\n]+|,\s+|\s+(?:và|nhưng|and|but)\s+/i)) {
+  for (const clause of draft.message.split(/[.!?;\n]+|,\s+|\s+(?:và|hoặc|nhưng|and|or|but)\s+/i)) {
     const claim = foldVi(clause);
     if (!/\b(chinh sach huy|huy truoc|hoan tien|hoan toan bo|hoan mot phan|refund|cancellation|chiu phi|phi huy)\b/.test(claim)
       && !((policyQuestion || policyInAnswer) && /\b(phi|hoan|huy)\b/.test(claim))) continue;
@@ -636,7 +636,7 @@ function groundingProblems(
     const partial = /\b(hoan(?: tien)? mot phan|partial refund)\b/.test(claim)
       || refundPercents.some((percent) => percent !== 100);
     const window = claim.match(/\btu\s+(\d+)\s*[–—-]\s*(\d+)\s*(?:gio|tieng|h)\s+truoc\b/);
-    const underCutoff = claim.match(/\bduoi\s+(\d+)\s*(?:gio|tieng|h)\s+truoc\b/);
+    const noRefundCutoff = claim.match(/\b(?:duoi|trong(?: vong)?)\s+(\d+)\s*(?:gio|tieng|h)(?:\s+truoc)?\b/);
     if (full && beforeHours.some((hours) => hours !== policy.fullRefundBeforeHours)) {
       problems.push("ngưỡng hoàn toàn bộ không khớp chính sách hủy của sân");
     }
@@ -652,11 +652,11 @@ function groundingProblems(
     if (window && (Number(window[1]) !== policy.partialRefundBeforeHours || Number(window[2]) !== policy.fullRefundBeforeHours)) {
       problems.push("khoảng hoàn một phần không khớp chính sách hủy của sân");
     }
-    if (underCutoff && /\bkhong hoan\b/.test(claim) && Number(underCutoff[1]) !== policy.partialRefundBeforeHours) {
+    if (noRefundCutoff && /\bkhong hoan\b/.test(claim) && Number(noRefundCutoff[1]) !== policy.partialRefundBeforeHours) {
       problems.push("ngưỡng không hoàn tiền không khớp chính sách hủy của sân");
     }
-    if (underCutoff && partial) problems.push("không thể khẳng định hoàn một phần dưới ngưỡng không hoàn tiền");
-    if (!full && !fee && !partial && (beforeHours.length > 0 || percents.length > 0) && !underCutoff) {
+    if (noRefundCutoff && partial) problems.push("không thể khẳng định hoàn một phần dưới ngưỡng không hoàn tiền");
+    if (!full && !fee && !partial && (beforeHours.length > 0 || percents.length > 0) && !noRefundCutoff) {
       problems.push("khẳng định chính sách hủy thiếu điều kiện hoàn tiền hoặc phí tương ứng");
     }
   }
@@ -839,6 +839,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   const conv = getOrCreateConversation(args.conversationId, args.clientContext, args.principal);
   conv.registry.profiles.clear(); // hours must come from a profile checked in this user turn
   conv.registry.policySources.clear(); // policy must come from a profile or handoff checked in this turn
+  conv.registry.handoffs.clear(); // a booking card must be rechecked before it can be shown in a later turn
   const budget = new BudgetCounter(cfg.maxToolExecutions);
   const toolCtxBase = { db: args.db, now, timeoutMs: cfg.toolTimeoutMs };
 
@@ -1123,7 +1124,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
       // the user's task even though it avoids a fabricated claim.
       if (!policyGuardUsed && conv.registry.policySources.size === 0 && trace.toolCalls.length === 0
         && reply.answer.type === "limited_answer"
-        && /\b(chinh sach huy|chinh sach hoan tien|hoan tien)\b/.test(foldVi(args.userMessage))
+        && /\b(chinh sach huy|chinh sach hoan tien|hoan tien|phi huy)\b/.test(foldVi(args.userMessage))
         && (/(?:\bsan\b\s+\S+|\bcua san\b)/.test(foldVi(args.userMessage)) || conv.state.venueIds.length === 1)) {
         messages.push({ role: "user", content:
           "Người dùng hỏi chính sách hủy của một sân đã nêu. Hãy tìm đúng venueId bằng search_venues nếu chưa có, hỏi phân biệt nếu có nhiều sân phù hợp, rồi gọi get_venue_profile để lấy chính sách hủy trước khi trả lời. Không suy đoán chính sách từ câu hỏi." });

@@ -813,6 +813,19 @@ describe("orchestrator — cancellation policy grounding (AI-040)", () => {
     expect(res.trace.toolCalls.map((call) => call.tool)).toEqual(["search_venues", "get_venue_profile"]);
   });
 
+  it("routes a named-venue cancellation-fee question to the profile", async () => {
+    __resetConversations();
+    const model = scripted([
+      answer("Tôi chưa kiểm tra được phí hủy của sân Minh Khai Thủ Đức.", []),
+      J({ kind: "tool_call", tool: "search_venues", input: { query: "Minh Khai", district: "Thủ Đức", limit: 5 } }),
+      profile,
+      answer("Sân Minh Khai Thủ Đức hủy trước 4 giờ chịu phí 30%."),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Phí hủy của sân Minh Khai Thủ Đức?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls.map((call) => call.tool)).toEqual(["search_venues", "get_venue_profile"]);
+  });
+
   it("rejects policy numbers copied from the user without checking a profile", async () => {
     __resetConversations();
     const bad = answer("Sân Minh Khai Thủ Đức hoàn toàn bộ nếu hủy trước 12 giờ; trước 4 giờ chịu phí 30%.");
@@ -856,6 +869,13 @@ describe("orchestrator — cancellation policy grounding (AI-040)", () => {
     __resetConversations();
     const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
       model: scripted([profile, answer("Hủy trước 4 giờ được hoàn 70%.")]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("accepts two refund tiers joined by 'hoặc'", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
+      model: scripted([profile, answer("Hoàn 100% nếu hủy trước 12 giờ hoặc hoàn 70% nếu hủy trước 4 giờ.")]) });
     expect(res.trace.validation.answerValid).toBe(true);
   });
 
@@ -904,6 +924,15 @@ describe("orchestrator — cancellation policy grounding (AI-040)", () => {
     expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("ngưỡng không hoàn tiền");
   });
 
+  it("rejects an incorrect no-refund cutoff phrased as within N hours", async () => {
+    __resetConversations();
+    const bad = answer("Không hoàn tiền nếu hủy trong vòng 12 giờ trước buổi chơi.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức không hoàn tiền trong vòng 12 giờ đúng không?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("ngưỡng không hoàn tiền");
+  });
+
   it("rejects policy prose naming Quận 7 with the Thủ Đức profile ID", async () => {
     __resetConversations();
     const bad = answer("Sân Minh Khai Quận 7 hoàn toàn bộ nếu hủy trước 12 giờ.");
@@ -944,6 +973,30 @@ describe("orchestrator — cancellation policy grounding (AI-040)", () => {
       model: scripted([handoff, answer("Hủy trước 12 giờ được hoàn toàn bộ; trước 4 giờ chịu phí 30%.")]), cfg: cfg() });
     expect(res.trace.toolCalls[0]).toMatchObject({ tool: "prepare_booking_handoff", status: "ok" });
     expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("does not render a handoff card from an earlier user turn", async () => {
+    __resetConversations();
+    let handoffId = "";
+    const firstModel = new ScriptedModel((messages) => {
+      const toolMessage = [...messages].reverse().find((m) => m.role === "tool");
+      if (!toolMessage) return J({ kind: "tool_call", tool: "prepare_booking_handoff",
+        input: { venueId: "v_thuduc", facilityId: "f_thuduc", date: SAT, startTime: "17:00", durationHours: 1 } });
+      handoffId = (JSON.parse(toolMessage.content) as { data: { handoffId: string } }).data.handoffId;
+      return J({ kind: "final", answer: { type: "booking_handoff", message: "Bạn xác nhận trên trang đặt sân.",
+        venueIds: [], evidenceIds: [], optionIds: [], handoffId, missingFields: [] } });
+    });
+    const first = await runAssistantTurn({ userMessage: "Chuẩn bị đặt sân Minh Khai Thủ Đức 17:00 thứ Bảy", db,
+      model: firstModel, cfg: cfg() });
+    expect(first.trace.validation.answerValid).toBe(true);
+    expect(first.answer.handoff?.handoffId).toBe(handoffId);
+    const stale = J({ kind: "final", answer: { type: "booking_handoff", message: "Thẻ đặt sân vẫn còn hiệu lực.",
+      venueIds: [], evidenceIds: [], optionIds: [], handoffId, missingFields: [] } });
+    const second = await runAssistantTurn({ conversationId: first.conversationId, userMessage: "Vẫn đặt sân này nhé", db,
+      model: scripted([stale, stale]), cfg: cfg({ maxModelRounds: 2 }) });
+    expect(second.trace.validation.answerValid).toBe(false);
+    expect(second.trace.validation.lastRejection?.problems.join(" ")).toContain("handoffId");
+    expect(second.answer.handoff).toBeNull();
   });
 
   it("does not reuse a policy profile from an earlier user turn", async () => {
