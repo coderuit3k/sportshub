@@ -130,17 +130,25 @@ recognizable opening-hours wording; it is not a general semantic
 parser. A `limited_answer` may reference the profile's `venueId`
 without a preceding search card; address digits from that profile
 are grounded only for that referenced venue. Grounding deliberately
-does NOT claim semantic entailment
-of free prose — see the residual limits in
+does NOT claim semantic entailment of free prose.
+Cancellation-policy claims require a `get_venue_profile` or
+`prepare_booking_handoff` result for one referenced venue in the
+current user turn. The guard checks recognized full/partial/no-refund
+thresholds, fee or refund percentages, venue and policy provenance;
+an honest unknown answer remains valid. A named-venue policy question
+or cancellation-fee question that receives an unverified limited answer before any tool call gets
+one routing repair to search and check the profile. This lexical guard
+does not cover every paraphrase — see the residual limits in
 `docs/ai-evaluation.md` §6.
 
 **Registry freshness.** Options, handoffs and comparisons are
 slot-specific: any state change to sport, district, date, start
 time, duration, budget or the venue set invalidates them, and the
 model must re-check before they can be issued again. Operating-hour
-profiles are cleared at the start of each user turn, so a later
-answer cannot cite stale profile hours from an earlier turn. Handoffs
-additionally re-quote freshly inside the tool. Venue cards,
+profiles, policy sources and handoffs are cleared at the start of
+each user turn, so a later answer cannot cite stale hours, policy or
+reuse a booking card without a fresh handoff. Handoffs additionally
+re-quote freshly inside the tool. Venue cards,
 evidence and stats persist for the conversation; a review deleted
 mid-conversation is only detected on re-fetch (documented limit).
 

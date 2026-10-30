@@ -849,6 +849,233 @@ describe("orchestrator — operating hours grounding (AI-039)", () => {
   });
 });
 
+describe("orchestrator — cancellation policy grounding (AI-040)", () => {
+  const answer = (message: string, venueIds: string[] = ["v_thuduc"]) => J({
+    kind: "final", answer: { type: "limited_answer", message, venueIds,
+      evidenceIds: [], optionIds: [], handoffId: null, missingFields: [] },
+  });
+  const profile = J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_thuduc" } });
+
+  it("routes a named policy question to a profile after an unsupported unknown answer", async () => {
+    __resetConversations();
+    const model = scripted([
+      answer("Tôi chưa kiểm tra được chính sách hủy của sân Minh Khai Thủ Đức.", []),
+      J({ kind: "tool_call", tool: "search_venues", input: { query: "Minh Khai", district: "Thủ Đức", limit: 5 } }),
+      profile,
+      answer("Hoàn toàn bộ nếu hủy trước 12 giờ; trước 4 giờ chịu phí 30% (chính sách tham chiếu của nền tảng)."),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Chính sách huỷ của sân Minh Khai Thủ Đức?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls.map((call) => call.tool)).toEqual(["search_venues", "get_venue_profile"]);
+  });
+
+  it("routes a named-venue cancellation-fee question to the profile", async () => {
+    __resetConversations();
+    const model = scripted([
+      answer("Tôi chưa kiểm tra được phí hủy của sân Minh Khai Thủ Đức.", []),
+      J({ kind: "tool_call", tool: "search_venues", input: { query: "Minh Khai", district: "Thủ Đức", limit: 5 } }),
+      profile,
+      answer("Sân Minh Khai Thủ Đức hủy trước 4 giờ chịu phí 30%."),
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Phí hủy của sân Minh Khai Thủ Đức?", model, db, cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls.map((call) => call.tool)).toEqual(["search_venues", "get_venue_profile"]);
+  });
+
+  it("rejects policy numbers copied from the user without checking a profile", async () => {
+    __resetConversations();
+    const bad = answer("Sân Minh Khai Thủ Đức hoàn toàn bộ nếu hủy trước 12 giờ; trước 4 giờ chịu phí 30%.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức hoàn tiền trước 12 giờ, 4 giờ và phí 30% đúng không?",
+      model: scripted([bad, bad]), db, cfg: cfg({ maxModelRounds: 2 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("chính sách hủy cần");
+  });
+
+  it("accepts profile thresholds and fee, including two clauses in one sentence", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
+      model: scripted([profile, answer("Hủy trước 12 giờ được hoàn toàn bộ, và trước 4 giờ chịu phí 30% (chính sách tham chiếu của nền tảng).")]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("accepts the real-model 100 percent refund and 30 percent fee wording", async () => {
+    __resetConversations();
+    const message = "Chính sách hủy của Sân Cầu Lông Minh Khai (Thủ Đức):\n" +
+      "• Hoàn tiền 100% nếu hủy trước 12 giờ\n" +
+      "• Hoàn tiền một phần nếu hủy trước 4 giờ (mất 30% phí)\n" +
+      "• Không hoàn tiền nếu hủy trong vòng 4 giờ trước buổi chơi\n" +
+      "(Đây là chính sách tham chiếu của nền tảng SportsHub; sân chưa có chủ sân xác nhận.)";
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
+      model: scripted([profile, answer(message)]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("accepts the verified 4–12 hour window and under-4 cutoff in the live answer", async () => {
+    __resetConversations();
+    const message = "Chính sách hủy của Sân Cầu Lông Minh Khai (Thủ Đức): " +
+      "• Hoàn tiền 100%: Hủy trước 12 giờ\n" +
+      "• Hoàn tiền 70% (phí 30%): Hủy từ 4–12 giờ trước\n" +
+      "• Không hoàn tiền: Hủy dưới 4 giờ trước. Đây là chính sách tham chiếu của nền tảng SportsHub.";
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
+      model: scripted([profile, answer(message)]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("accepts a 70 percent refund inferred from the verified 30 percent fee", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
+      model: scripted([profile, answer("Hủy trước 4 giờ được hoàn 70%.")]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("accepts two refund tiers joined by 'hoặc'", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db, cfg: cfg(),
+      model: scripted([profile, answer("Hoàn 100% nếu hủy trước 12 giờ hoặc hoàn 70% nếu hủy trước 4 giờ.")]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("rejects full refund at the partial threshold", async () => {
+    __resetConversations();
+    const bad = answer("Sân Minh Khai Thủ Đức hoàn toàn bộ nếu hủy trước 4 giờ.");
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("ngưỡng hoàn toàn bộ");
+  });
+
+  it("rejects a fee copied from the user's question", async () => {
+    __resetConversations();
+    const bad = answer("Sân Minh Khai Thủ Đức hủy trước 4 giờ chịu phí 20%.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức hủy trước 4 giờ chịu phí 20% đúng không?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("phí hủy");
+  });
+
+  it("checks a bare fee percentage in an answer about cancellation", async () => {
+    __resetConversations();
+    const bad = answer("Phí 20%.");
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức có phí 20% đúng không?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("phí hủy");
+  });
+
+  it("rejects a wrong partial-refund window even when the user supplied its number", async () => {
+    __resetConversations();
+    const bad = answer("Hoàn tiền 70% (phí 30%) nếu hủy từ 5–12 giờ trước.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức hoàn 70% từ 5–12 giờ trước đúng không?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("khoảng hoàn một phần");
+  });
+
+  it("rejects a wrong no-refund cutoff even when its number is in the question", async () => {
+    __resetConversations();
+    const bad = answer("Không hoàn tiền nếu hủy dưới 12 giờ trước.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức không hoàn tiền nếu hủy dưới 12 giờ trước đúng không?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("ngưỡng không hoàn tiền");
+  });
+
+  it("rejects an incorrect no-refund cutoff phrased as within N hours", async () => {
+    __resetConversations();
+    const bad = answer("Không hoàn tiền nếu hủy trong vòng 12 giờ trước buổi chơi.");
+    const res = await runAssistantTurn({ userMessage: "Sân Minh Khai Thủ Đức không hoàn tiền trong vòng 12 giờ đúng không?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("ngưỡng không hoàn tiền");
+  });
+
+  it("rejects policy prose naming Quận 7 with the Thủ Đức profile ID", async () => {
+    __resetConversations();
+    const bad = answer("Sân Minh Khai Quận 7 hoàn toàn bộ nếu hủy trước 12 giờ.");
+    const model = scripted([
+      J({ kind: "tool_call", tool: "search_venues", input: { sportSlug: "cau-long", limit: 5 } }),
+      profile, bad, bad,
+    ]);
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy sân Minh Khai Quận 7?", db,
+      model, cfg: cfg({ maxModelRounds: 4 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("sân khác");
+  });
+
+  it("rejects owner verification for an imported policy", async () => {
+    __resetConversations();
+    const bad = answer("Chính sách hủy được chủ sân xác nhận: hoàn toàn bộ trước 12 giờ.");
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db,
+      model: scripted([profile, bad, bad]), cfg: cfg({ maxModelRounds: 3 }) });
+    expect(res.trace.validation.answerValid).toBe(false);
+    expect(res.trace.validation.lastRejection?.problems.join(" ")).toContain("nguồn chính sách hủy");
+  });
+
+  it("accepts owner verification for an owner-managed policy", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Bóng Rổ Phú Thọ?", db,
+      model: scripted([
+        J({ kind: "tool_call", tool: "get_venue_profile", input: { venueId: "v_owner" } }),
+        answer("Chính sách hủy được chủ sân xác nhận: hoàn toàn bộ trước 12 giờ.", ["v_owner"]),
+      ]), cfg: cfg() });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("accepts policy values from a handoff rechecked in the current turn", async () => {
+    __resetConversations();
+    const handoff = J({ kind: "tool_call", tool: "prepare_booking_handoff",
+      input: { venueId: "v_thuduc", facilityId: "f_thuduc", date: SAT, startTime: "17:00", durationHours: 1 } });
+    const res = await runAssistantTurn({ userMessage: "Chuẩn bị đặt sân Minh Khai Thủ Đức 17:00 thứ Bảy, chính sách hủy thế nào?", db,
+      model: scripted([handoff, answer("Hủy trước 12 giờ được hoàn toàn bộ; trước 4 giờ chịu phí 30%.")]), cfg: cfg() });
+    expect(res.trace.toolCalls[0]).toMatchObject({ tool: "prepare_booking_handoff", status: "ok" });
+    expect(res.trace.validation.answerValid).toBe(true);
+  });
+
+  it("does not render a handoff card from an earlier user turn", async () => {
+    __resetConversations();
+    let handoffId = "";
+    const firstModel = new ScriptedModel((messages) => {
+      const toolMessage = [...messages].reverse().find((m) => m.role === "tool");
+      if (!toolMessage) return J({ kind: "tool_call", tool: "prepare_booking_handoff",
+        input: { venueId: "v_thuduc", facilityId: "f_thuduc", date: SAT, startTime: "17:00", durationHours: 1 } });
+      handoffId = (JSON.parse(toolMessage.content) as { data: { handoffId: string } }).data.handoffId;
+      return J({ kind: "final", answer: { type: "booking_handoff", message: "Bạn xác nhận trên trang đặt sân.",
+        venueIds: [], evidenceIds: [], optionIds: [], handoffId, missingFields: [] } });
+    });
+    const first = await runAssistantTurn({ userMessage: "Chuẩn bị đặt sân Minh Khai Thủ Đức 17:00 thứ Bảy", db,
+      model: firstModel, cfg: cfg() });
+    expect(first.trace.validation.answerValid).toBe(true);
+    expect(first.answer.handoff?.handoffId).toBe(handoffId);
+    const stale = J({ kind: "final", answer: { type: "booking_handoff", message: "Thẻ đặt sân vẫn còn hiệu lực.",
+      venueIds: [], evidenceIds: [], optionIds: [], handoffId, missingFields: [] } });
+    const second = await runAssistantTurn({ conversationId: first.conversationId, userMessage: "Vẫn đặt sân này nhé", db,
+      model: scripted([stale, stale]), cfg: cfg({ maxModelRounds: 2 }) });
+    expect(second.trace.validation.answerValid).toBe(false);
+    expect(second.trace.validation.lastRejection?.problems.join(" ")).toContain("handoffId");
+    expect(second.answer.handoff).toBeNull();
+  });
+
+  it("does not reuse a policy profile from an earlier user turn", async () => {
+    __resetConversations();
+    const claim = answer("Sân Minh Khai Thủ Đức hoàn toàn bộ nếu hủy trước 12 giờ.");
+    const first = await runAssistantTurn({ userMessage: "Chính sách hủy của sân Minh Khai Thủ Đức?", db,
+      model: scripted([profile, claim]), cfg: cfg() });
+    expect(first.trace.validation.answerValid).toBe(true);
+    const second = await runAssistantTurn({ conversationId: first.conversationId,
+      userMessage: "Chính sách đó vẫn vậy chứ?", db, model: scripted([claim, claim]), cfg: cfg({ maxModelRounds: 2 }) });
+    expect(second.trace.validation.answerValid).toBe(false);
+    expect(second.trace.validation.lastRejection?.problems.join(" ")).toContain("chính sách hủy cần");
+  });
+
+  it("allows a question asking which venue's policy to check", async () => {
+    __resetConversations();
+    const res = await runAssistantTurn({ userMessage: "Chính sách hủy thế nào?", db, cfg: cfg(),
+      model: scripted([answer("Bạn muốn hỏi chính sách hủy của sân nào?", [])]) });
+    expect(res.trace.validation.answerValid).toBe(true);
+    expect(res.trace.toolCalls).toHaveLength(0);
+  });
+});
+
 describe("orchestrator — conversation ownership (audit B)", () => {
   it("another principal presenting the same conversationId sees a FRESH conversation", async () => {
     __resetConversations();

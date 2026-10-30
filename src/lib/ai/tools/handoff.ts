@@ -20,6 +20,8 @@ import {
   errorEnvelope,
   okEnvelope,
   ToolErrorCode,
+  venueProvenance,
+  type ProvenanceKind,
   type ToolContext,
   type ToolEnvelope,
 } from "../types";
@@ -29,6 +31,7 @@ export interface BookingHandoff {
   handoffId: string;
   venueId: string;
   venueName: string;
+  venueDistrict: string;
   facilityId: string;
   facilityName: string;
   date: string;
@@ -45,6 +48,7 @@ export interface BookingHandoff {
     fullRefundBeforeHours: number;
     partialRefundBeforeHours: number;
     partialFeePercent: number;
+    provenance: ProvenanceKind;
   };
   /** Server-generated route into the existing booking widget, with the
    * selection pre-filled. The user confirms there — not here. */
@@ -69,7 +73,7 @@ export async function prepareBookingHandoff(
     const venue = await ctx.db.venue.findUnique({
       where: { id: args.venueId },
       select: {
-        id: true, slug: true, name: true, status: true,
+        id: true, slug: true, name: true, district: true, status: true, source: true,
         cancelFullBeforeHours: true, cancelPartialBeforeHours: true, cancelPartialFeePercent: true,
       },
     });
@@ -128,6 +132,7 @@ export async function prepareBookingHandoff(
         handoffId,
         venueId: venue.id,
         venueName: venue.name,
+        venueDistrict: venue.district,
         facilityId: option.facilityId,
         facilityName: option.facilityName,
         date: args.date,
@@ -143,6 +148,7 @@ export async function prepareBookingHandoff(
           fullRefundBeforeHours: venue.cancelFullBeforeHours,
           partialRefundBeforeHours: venue.cancelPartialBeforeHours,
           partialFeePercent: venue.cancelPartialFeePercent,
+          provenance: venueProvenance(venue.source).cancellationPolicy,
         },
         bookingUrl: `/venues/${venue.slug}?${params.toString()}`,
         authenticationRequirement: "login_required_to_confirm",

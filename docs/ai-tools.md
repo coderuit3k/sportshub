@@ -108,4 +108,6 @@ lands in the existing booking widget pre-filled (facility, date,
 start, duration); the user confirms there, logged in, under the
 widget's own revalidation. Labels state the price is a platform
 reference, the schedule is simulated, and the quote does not hold
-the slot. A changed selection produces a new handoff id.
+the slot. The handoff includes the venue district and the policy
+summary's provenance for grounding policy claims. A changed selection
+produces a new handoff id.

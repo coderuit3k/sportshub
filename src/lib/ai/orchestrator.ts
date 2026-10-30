@@ -68,6 +68,7 @@ const StatePatch = ConversationState.partial().extend({
 interface RuntimeRegistry {
   venues: Map<string, VenueCardData>;
   profiles: Map<string, VenueProfileData>;
+  policySources: Map<string, VenueProfileData["cancellationPolicy"]>;
   evidence: Map<string, EvidenceItem>;
   options: Map<string, BookableOption>;
   handoffs: Map<string, BookingHandoff>;
@@ -160,7 +161,7 @@ function getOrCreateConversation(
     principal,
     state: parsedState?.success ? parsedState.data : ConversationState.parse({}),
     history,
-    registry: { venues: new Map(), profiles: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, stats: new Map(), factNumbers: new Set(), warnings: [] },
+    registry: { venues: new Map(), profiles: new Map(), policySources: new Map(), evidence: new Map(), options: new Map(), handoffs: new Map(), comparison: null, stats: new Map(), factNumbers: new Set(), warnings: [] },
     updatedAt: nowMs,
   };
   conversations.set(`${principal}:${c.id}`, c);
@@ -316,6 +317,7 @@ function registerToolResult(conv: Conversation, tool: string, env: ToolEnvelope<
   if (tool === "get_venue_profile") {
     const profile = data as unknown as VenueProfileData;
     conv.registry.profiles.set(profile.venueId, profile);
+    conv.registry.policySources.set(profile.venueId, profile.cancellationPolicy);
   }
   if (tool === "search_review_evidence") {
     const items = (data.items as EvidenceItem[]) ?? [];
@@ -337,6 +339,7 @@ function registerToolResult(conv: Conversation, tool: string, env: ToolEnvelope<
   if (tool === "prepare_booking_handoff") {
     const h = data as unknown as BookingHandoff;
     conv.registry.handoffs.set(h.handoffId, h);
+    conv.registry.policySources.set(h.venueId, h.policySummary);
   }
   if (tool === "get_review_summary_stats") {
     const stats = data as unknown as ReviewStatsData;
@@ -404,6 +407,14 @@ function collectFactNumbers(
     addStringDigits(n, profile.name);
     addStringDigits(n, profile.address);
     addStringDigits(n, profile.district);
+  }
+  for (const id of draft.venueIds) {
+    const policy = conv.registry.policySources.get(id);
+    if (!policy) continue;
+    addFactNumbers(n, policy.fullRefundBeforeHours);
+    addFactNumbers(n, policy.partialRefundBeforeHours);
+    addFactNumbers(n, policy.partialFeePercent);
+    addFactNumbers(n, 100); // a full refund is 100%; partial refund is 100 minus the verified fee
   }
   for (const o of conv.registry.options.values()) {
     addFactNumbers(n, o.totalPrice);
@@ -509,6 +520,22 @@ function extractProseNumbers(message: string): { value: number; isPercent: boole
   return out;
 }
 
+function claimsDifferentVenue(conv: Conversation, venueId: string, foldedClause: string): boolean {
+  const profile = conv.registry.profiles.get(venueId);
+  const card = conv.registry.venues.get(venueId);
+  const handoff = [...conv.registry.handoffs.values()].find((h) => h.venueId === venueId);
+  const targetName = foldVi(profile?.name ?? card?.name ?? handoff?.venueName ?? "");
+  const targetLocation = foldVi(`${profile?.district ?? card?.district ?? handoff?.venueDistrict ?? ""} ${profile?.address ?? card?.address ?? ""} ${profile?.description ?? ""}`);
+  const otherVenues = [...conv.registry.venues.values(), ...conv.registry.profiles.values()]
+    .filter((venue) => venue.venueId !== venueId);
+  const otherNames = otherVenues.map((venue) => foldVi(venue.name))
+    .filter((name) => name.length >= 8 && !targetName.includes(name));
+  const otherDistricts = otherVenues.map((venue) => foldVi(venue.district));
+  const districtMentions = [...foldedClause.matchAll(/\b(?:quan|district)\s+\d+\b|\bthu duc\b/g)].map((m) => m[0]);
+  return otherNames.some((name) => foldedClause.includes(name)) ||
+    [...otherDistricts, ...districtMentions].some((district) => district && !targetLocation.includes(district) && foldedClause.includes(district));
+}
+
 function groundingProblems(
   conv: Conversation,
   draft: Extract<z.infer<typeof ModelReply>, { kind: "final" }>["answer"],
@@ -542,15 +569,7 @@ function groundingProblems(
       problems.push("giờ mở cửa cần get_venue_profile trong lượt này và venueIds chứa đúng venueId từ profile");
       continue;
     }
-    const targetLocation = foldVi(`${profile.district} ${profile.address} ${profile.description}`);
-    const otherVenues = [...conv.registry.venues.values(), ...conv.registry.profiles.values()]
-      .filter((venue) => venue.venueId !== profile.venueId);
-    const otherDistricts = otherVenues.map((venue) => foldVi(venue.district));
-    const otherNames = otherVenues.map((venue) => foldVi(venue.name))
-      .filter((name) => name.length >= 8 && !foldVi(profile.name).includes(name));
-    const districtMentions = [...foldedClause.matchAll(/\b(?:quan|district)\s+\d+\b|\bthu duc\b/g)].map((m) => m[0]);
-    if (otherNames.some((name) => foldedClause.includes(name)) ||
-      [...otherDistricts, ...districtMentions].some((district) => district && !targetLocation.includes(district) && foldedClause.includes(district))) {
+    if (claimsDifferentVenue(conv, profile.venueId, foldedClause)) {
       problems.push("giờ mở cửa trong câu trả lời thuộc sân khác với venueIds/profile đã kiểm tra");
       continue;
     }
@@ -579,6 +598,69 @@ function groundingProblems(
     );
     if (!matches) problems.push("giờ mở cửa trong câu trả lời không khớp giờ hoạt động của sân/ngày từ get_venue_profile");
   }
+  // shortcut: validate common refund thresholds/fees in prose; extend for new wording seen in model traces.
+  const policyQuestion = /\b(chinh sach huy|chinh sach hoan tien|hoan tien|phi huy|refund|cancellation)\b/.test(foldVi(currentUserMessage ?? ""));
+  const policyInAnswer = /\b(chinh sach huy|huy truoc|hoan tien|hoan toan bo|refund|cancellation|chiu phi|phi huy)\b/.test(foldVi(draft.message));
+  for (const clause of draft.message.split(/[.!?;\n]+|,\s+|\s+(?:và|hoặc|nhưng|and|or|but)\s+/i)) {
+    const claim = foldVi(clause);
+    if (!/\b(chinh sach huy|huy truoc|hoan tien|hoan toan bo|hoan mot phan|refund|cancellation|chiu phi|phi huy)\b/.test(claim)
+      && !((policyQuestion || policyInAnswer) && /\b(phi|hoan|huy)\b/.test(claim))) continue;
+    if (/^ban\b/.test(claim) && /\bsan nao\b/.test(claim) && !/\d/.test(claim)) continue;
+    if (/\b(chua kiem tra|chua ro|chua duoc xac minh|khong biet|khong ro|khong co du lieu)\b/.test(claim)
+      && !/\d/.test(claim) && !/\b(chu san xac nhan|owner verified)\b/.test(claim)) continue;
+    const policy = draft.venueIds.length === 1 ? conv.registry.policySources.get(draft.venueIds[0]) : null;
+    if (!policy) {
+      problems.push("chính sách hủy cần get_venue_profile hoặc prepare_booking_handoff cho đúng sân trong lượt này");
+      continue;
+    }
+    if (claimsDifferentVenue(conv, draft.venueIds[0], claim)) {
+      problems.push("chính sách hủy trong câu trả lời thuộc sân khác với nguồn đã kiểm tra");
+      continue;
+    }
+    const ownerClaim = /\b(chu san (da )?xac nhan|owner verified)\b/.test(claim)
+      && !/\b(chua|khong|not)\b.{0,30}\b(chu san (da )?xac nhan|owner verified)\b/.test(claim);
+    if ((ownerClaim && policy.provenance !== "owner_verified") ||
+      (/\b(chinh sach tham chieu|tham chieu cua nen tang|platform reference)\b/.test(claim)
+        && policy.provenance !== "platform_reference")) {
+      problems.push("nguồn chính sách hủy trong câu trả lời không khớp tool");
+    }
+    const beforeHours = [...claim.matchAll(/\b(?:truoc|before)\s+(\d+(?:[.,]\d+)?)\s*(?:gio|tieng|hours?|h)\b/g)]
+      .map((m) => Number(m[1].replace(",", ".")));
+    const percents = [...claim.matchAll(/\b(\d+(?:[.,]\d+)?)\s*%/g)].map((m) => Number(m[1].replace(",", ".")));
+    const refundPercents = [...claim.matchAll(/\bhoan(?: tien)?\s+(\d+(?:[.,]\d+)?)\s*%/g)]
+      .map((m) => Number(m[1].replace(",", ".")));
+    const feePercents = [...claim.matchAll(/\bphi(?: huy)?\s+(\d+(?:[.,]\d+)?)\s*%|\bmat\s+(\d+(?:[.,]\d+)?)\s*%|(\d+(?:[.,]\d+)?)\s*%\s*phi\b/g)]
+      .map((m) => Number((m[1] ?? m[2] ?? m[3]).replace(",", ".")));
+    const full = /\b(hoan toan bo|hoan day du|full refund)\b/.test(claim) || refundPercents.includes(100);
+    const fee = /\b(chiu phi|phi huy|muc phi|cancellation fee)\b/.test(claim)
+      || ((policyQuestion || policyInAnswer) && /\bphi\b/.test(claim));
+    const partial = /\b(hoan(?: tien)? mot phan|partial refund)\b/.test(claim)
+      || refundPercents.some((percent) => percent !== 100);
+    const window = claim.match(/\btu\s+(\d+)\s*[–—-]\s*(\d+)\s*(?:gio|tieng|h)\s+truoc\b/);
+    const noRefundCutoff = claim.match(/\b(?:duoi|trong(?: vong)?)\s+(\d+)\s*(?:gio|tieng|h)(?:\s+truoc)?\b/);
+    if (full && beforeHours.some((hours) => hours !== policy.fullRefundBeforeHours)) {
+      problems.push("ngưỡng hoàn toàn bộ không khớp chính sách hủy của sân");
+    }
+    if ((fee || partial) && beforeHours.some((hours) => hours !== policy.partialRefundBeforeHours)) {
+      problems.push("ngưỡng hoàn một phần không khớp chính sách hủy của sân");
+    }
+    if (fee && feePercents.some((percent) => percent !== policy.partialFeePercent)) {
+      problems.push("phí hủy không khớp chính sách hủy của sân");
+    }
+    if (partial && refundPercents.some((percent) => percent !== 100 - policy.partialFeePercent)) {
+      problems.push("tỷ lệ hoàn tiền không khớp chính sách hủy của sân");
+    }
+    if (window && (Number(window[1]) !== policy.partialRefundBeforeHours || Number(window[2]) !== policy.fullRefundBeforeHours)) {
+      problems.push("khoảng hoàn một phần không khớp chính sách hủy của sân");
+    }
+    if (noRefundCutoff && /\bkhong hoan\b/.test(claim) && Number(noRefundCutoff[1]) !== policy.partialRefundBeforeHours) {
+      problems.push("ngưỡng không hoàn tiền không khớp chính sách hủy của sân");
+    }
+    if (noRefundCutoff && partial) problems.push("không thể khẳng định hoàn một phần dưới ngưỡng không hoàn tiền");
+    if (!full && !fee && !partial && (beforeHours.length > 0 || percents.length > 0) && !noRefundCutoff) {
+      problems.push("khẳng định chính sách hủy thiếu điều kiện hoàn tiền hoặc phí tương ứng");
+    }
+  }
   // Provenance labels may never be upgraded in prose. The check is
   // negation-aware per clause: "đây KHÔNG PHẢI giá chính thức" and
   // "giá CHƯA được chủ sân xác nhận" state the truth and must pass —
@@ -587,8 +669,9 @@ function groundingProblems(
   // repair rounds on it (real-model run 2026-10-28, case AI-024).
   const folded = foldVi(draft.message);
   const clauses = folded.split(/[.!?;\n]+/);
-  const affirmedPhrase = (phrases: string[]): boolean =>
+  const affirmedPhrase = (phrases: string[], inClause?: RegExp): boolean =>
     clauses.some((clause) =>
+      (!inClause || inClause.test(clause)) &&
       phrases.some((p) => {
         const idx = clause.indexOf(p);
         if (idx < 0) return false;
@@ -599,7 +682,7 @@ function groundingProblems(
   if (affirmedPhrase(["gia chinh thuc", "official price"])) {
     problems.push("câu trả lời gọi giá là 'chính thức' nhưng giá trong hệ thống là giá tham chiếu của nền tảng");
   }
-  const ownerConfirmedClaim = affirmedPhrase(["chu san xac nhan", "chu san da xac nhan", "owner-verified price", "owner verified price"]);
+  const ownerConfirmedClaim = affirmedPhrase(["chu san xac nhan", "chu san da xac nhan", "owner-verified price", "owner verified price"], /\b(gia|price)\b/);
   if (ownerConfirmedClaim) {
     const referenced = draft.venueIds
       .map((id) => conv.registry.venues.get(id))
@@ -650,7 +733,7 @@ function validateAndHydrate(
   // mint venue cards, so the card-registry check does not apply.
   if (draft.type !== "venue_comparison") {
     for (const id of draft.venueIds) {
-      if (!conv.registry.venues.has(id) && !(draft.type === "limited_answer" && conv.registry.profiles.has(id))) {
+      if (!conv.registry.venues.has(id) && !(draft.type === "limited_answer" && (conv.registry.profiles.has(id) || conv.registry.policySources.has(id)))) {
         problems.push(`unknown venueId ${id}`);
       }
     }
@@ -756,6 +839,8 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   const traceId = randomUUID();
   const conv = getOrCreateConversation(args.conversationId, args.clientContext, args.principal);
   conv.registry.profiles.clear(); // hours must come from a profile checked in this user turn
+  conv.registry.policySources.clear(); // policy must come from a profile or handoff checked in this turn
+  conv.registry.handoffs.clear(); // a booking card must be rechecked before it can be shown in a later turn
   const budget = new BudgetCounter(cfg.maxToolExecutions);
   const toolCtxBase = { db: args.db, now, timeoutMs: cfg.toolTimeoutMs };
 
@@ -827,6 +912,7 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
   let slotGuardUsed = false;
   let searchGuardUsed = false;
   let compareGuardUsed = false;
+  let policyGuardUsed = false;
   const deadline = startedAtMs + cfg.requestTimeoutMs;
   // Snapshot of registry options from EARLIER turns: the shortlist
   // auto-fill below may only use options produced by THIS turn's
@@ -1032,6 +1118,19 @@ export async function runAssistantTurn(args: RunTurnArgs): Promise<AssistantTurn
         });
         repairCount += 1;
         compareGuardUsed = true;
+        continue;
+      }
+      // A named venue's cancellation policy is in its profile. An
+      // unsupported "not checked" final after zero tool calls loses
+      // the user's task even though it avoids a fabricated claim.
+      if (!policyGuardUsed && conv.registry.policySources.size === 0 && trace.toolCalls.length === 0
+        && reply.answer.type === "limited_answer"
+        && /\b(chinh sach huy|chinh sach hoan tien|hoan tien|phi huy)\b/.test(foldVi(args.userMessage))
+        && (/(?:\bsan\b\s+\S+|\bcua san\b)/.test(foldVi(args.userMessage)) || conv.state.venueIds.length === 1)) {
+        messages.push({ role: "user", content:
+          "Người dùng hỏi chính sách hủy của một sân đã nêu. Hãy tìm đúng venueId bằng search_venues nếu chưa có, hỏi phân biệt nếu có nhiều sân phù hợp, rồi gọi get_venue_profile để lấy chính sách hủy trước khi trả lời. Không suy đoán chính sách từ câu hỏi." });
+        repairCount += 1;
+        policyGuardUsed = true;
         continue;
       }
       const check = validateAndHydrate(conv, reply.answer, args.userMessage);
