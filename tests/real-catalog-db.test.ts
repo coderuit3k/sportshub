@@ -10,13 +10,10 @@ import { REAL_GOOGLE_REVIEWS } from "../prisma/real-reviews-data";
 /**
  * Importer integration test: ensureRealCatalog against a throwaway
  * SQLite database (created with `prisma db push` in a temp dir).
- * Covers the full swap (fictional purge + 119 real inserts), the
- * idempotent second run (pure no-op), and the booking guard: a venue
- * with LIVE bookings (PENDING / CONFIRMED) is refused and fails the
- * step loudly instead of being deleted, while a venue whose only
- * booking is CANCELLED purges cleanly — the dead booking (with its
- * status history and payments) is deleted inside the closure and
- * counted as deadBookingsRemoved.
+ * Covers the sample-to-real swap (fictional purge + 119 real inserts),
+ * idempotence, owner-venue preservation, and the booking guard: any
+ * booking, including CANCELLED, prevents catalog deletion of its venue
+ * and financial history.
  */
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -33,7 +30,7 @@ function schemaEngineBinary(): string | undefined {
 let prisma: PrismaClient;
 let ownerId: string;
 
-async function makeFictionalVenue(slug: string): Promise<string> {
+async function makeFictionalVenue(slug: string, source = "sample"): Promise<string> {
   const venue = await prisma.venue.create({
     data: {
       slug,
@@ -41,6 +38,7 @@ async function makeFictionalVenue(slug: string): Promise<string> {
       description: "sample venue",
       address: "1 Nowhere",
       district: "Quận 1",
+      source,
       ownerId,
     },
   });
@@ -116,6 +114,22 @@ describe("ensureRealCatalog", () => {
     expect(after).toEqual(before); // same rows, not delete + re-insert
   }, 120_000);
 
+  it("preserves an owner-created venue across catalog syncs", async () => {
+    const venueId = await makeFictionalVenue("owner-created", "owner");
+    await makeFictionalVenue("sample-to-retire");
+
+    const first = await ensureRealCatalog(prisma);
+    const second = await ensureRealCatalog(prisma);
+
+    expect(first.purged).toBe(1);
+    expect(second.purged).toBe(0);
+    expect(await prisma.venue.findUnique({ where: { slug: "sample-to-retire" } })).toBeNull();
+    expect(await prisma.venue.findUnique({ where: { id: venueId } })).toMatchObject({
+      slug: "owner-created",
+      source: "owner",
+    });
+  }, 120_000);
+
   it("refuses to purge a venue with bookings, then converges once the booking is gone", async () => {
     const venueId = await makeFictionalVenue("fictional-with-booking");
     const sport = await prisma.sport.findFirstOrThrow();
@@ -151,7 +165,7 @@ describe("ensureRealCatalog", () => {
     expect(await prisma.venue.findUnique({ where: { slug: "fictional-with-booking" } })).toBeNull();
   }, 120_000);
 
-  it("purges a venue whose only booking is CANCELLED, deleting the dead booking with it", async () => {
+  it("refuses to purge a venue with a CANCELLED booking and keeps its records", async () => {
     const venueId = await makeFictionalVenue("fictional-cancelled-booking");
     const sport = await prisma.sport.findFirstOrThrow();
     const facility = await prisma.facility.create({
@@ -180,16 +194,16 @@ describe("ensureRealCatalog", () => {
     });
     await prisma.payment.create({ data: { bookingId: booking.id, amount: 100000 } });
 
+    await expect(ensureRealCatalog(prisma)).rejects.toThrow(/blocked by bookings/);
+    expect(await prisma.venue.findUnique({ where: { id: venueId } })).not.toBeNull();
+    expect(await prisma.booking.findUnique({ where: { id: booking.id } })).not.toBeNull();
+    expect(await prisma.bookingStatusHistory.count({ where: { bookingId: booking.id } })).toBe(1);
+    expect(await prisma.payment.count({ where: { bookingId: booking.id } })).toBe(1);
+
+    await prisma.booking.delete({ where: { id: booking.id } });
     const result = await ensureRealCatalog(prisma);
     expect(result.purged).toBe(1);
-    expect(result.deadBookingsRemoved).toBe(1);
-    expect(result.finalGoogleVenues).toBe(119);
-    // Venue gone — and the dead booking went with it, history and
-    // payments included, instead of blocking the purge.
-    expect(await prisma.venue.findUnique({ where: { slug: "fictional-cancelled-booking" } })).toBeNull();
-    expect(await prisma.booking.findUnique({ where: { id: booking.id } })).toBeNull();
-    expect(await prisma.bookingStatusHistory.count({ where: { bookingId: booking.id } })).toBe(0);
-    expect(await prisma.payment.count({ where: { bookingId: booking.id } })).toBe(0);
+    expect(await prisma.venue.findUnique({ where: { id: venueId } })).toBeNull();
   }, 120_000);
 
   it("still refuses to purge a venue with a CONFIRMED booking", async () => {
@@ -225,7 +239,6 @@ describe("ensureRealCatalog", () => {
     await prisma.booking.delete({ where: { id: booking.id } });
     const result = await ensureRealCatalog(prisma);
     expect(result.purged).toBe(1);
-    expect(result.deadBookingsRemoved).toBe(0);
     expect(result.finalGoogleVenues).toBe(119);
     expect(await prisma.venue.findUnique({ where: { slug: "fictional-confirmed-booking" } })).toBeNull();
   }, 120_000);
