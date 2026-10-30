@@ -123,6 +123,7 @@ export function BookingWidget({
   const [busy, setBusy] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotError, setSlotError] = useState<string | null>(null);
+  const requestRef = useRef<{ payload: string; key: string } | null>(null);
 
   const cacheKey = `${facilityId}|${date}`;
   const [slotCache, setSlotCache] = useState<Record<string, SlotDTO[]>>(() => {
@@ -169,7 +170,6 @@ export function BookingWidget({
   // (pure helper in lib/booking/logic — unit-tested). The server still
   // re-validates everything at booking time.
   const slots: DisplaySlot[] = hourly ? aggregateSlots(hourly, duration) : [];
-  const total = slot ? slot.price : 0;
 
   // One-shot pre-selection from the handoff link: when the requested
   // start time exists in the loaded grid, select it if it is still
@@ -196,26 +196,33 @@ export function BookingWidget({
   };
 
   async function confirm() {
-    if (!slot) return;
+    if (!slot || slot.price === null) return;
     setBusy(true); setMsg(null);
-    const idempotencyKey = `web-${facilityId}-${slot.startAt}-${duration}`;
-    const r = await fetch("/api/bookings", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ facilityId, startAt: slot.startAt, endAt: slot.endAt, idempotencyKey }),
-    });
-    const j = (await r.json()) as { error?: string; booking?: { reference: string; status: string } };
-    setBusy(false);
-    if (!r.ok) { setMsg(j.error ?? t("failed")); return; }
-    setMsg(t("success", { reference: j.booking?.reference ?? "", status: statusLabel(j.booking?.status) }));
-    // The just-booked slot (and every start overlapping it) must lock right
-    // away in this same session: drop the cached availability for this
-    // facility/date so the effect refetches, and clear the selection.
-    setSlot(null);
-    setSlotCache((c) => {
-      const next = { ...c };
-      delete next[cacheKey];
-      return next;
-    });
+    const payload = `${facilityId}|${slot.startAt}|${slot.endAt}`;
+    if (requestRef.current?.payload !== payload) requestRef.current = { payload, key: crypto.randomUUID() };
+    try {
+      const r = await fetch("/api/bookings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ facilityId, startAt: slot.startAt, endAt: slot.endAt, idempotencyKey: requestRef.current.key }),
+      });
+      const j = (await r.json()) as { error?: string; booking?: { reference: string; status: string } };
+      if (!r.ok) { setMsg(j.error ?? t("failed")); return; }
+      requestRef.current = null;
+      setMsg(t("success", { reference: j.booking?.reference ?? "", status: statusLabel(j.booking?.status) }));
+      // The just-booked slot (and every start overlapping it) must lock right
+      // away in this same session: drop the cached availability for this
+      // facility/date so the effect refetches, and clear the selection.
+      setSlot(null);
+      setSlotCache((c) => {
+        const next = { ...c };
+        delete next[cacheKey];
+        return next;
+      });
+    } catch {
+      setMsg(t("failed"));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div id={BOOKING_WIDGET_ID} className="card scroll-mt-24 p-5">
@@ -240,13 +247,13 @@ export function BookingWidget({
           <button key={s.startAt} disabled={!s.available}
             onClick={() => setSlot(s)}
             className={`rounded-lg border px-2 py-2 text-sm ${!s.available ? "cursor-not-allowed bg-slate-100 text-slate-400" : slot?.startAt === s.startAt ? "border-primary bg-primary text-white" : "hover:border-primary"}`}>
-            {s.startTime}<br /><span className="text-xs">{s.available ? formatVND(s.price, locale) : s.past ? t("slotPast") : t("slotBooked")}</span>
+            {s.startTime}<br /><span className="text-xs">{s.price === null ? t("priceUnavailable") : s.available ? formatVND(s.price, locale) : s.past ? t("slotPast") : t("slotBooked")}</span>
           </button>
         ))}
       </div>
-      {slot && (
+      {slot && slot.price !== null && (
         <div className="mb-3 rounded-lg bg-slate-50 p-3">
-          <p className="text-base font-bold text-primary">{t("total", { total: formatVND(total, locale) })}</p>
+          <p className="text-base font-bold text-primary">{t("total", { total: formatVND(slot.price, locale) })}</p>
         </div>
       )}
       <button className="btn-primary w-full" disabled={!slot || busy} onClick={confirm}>{busy ? t("processing") : t("confirm")}</button>

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { calculatePrice, calculateRefund, isValidTransition, makeReference, ACTIVE_BOOKING_STATUSES, type CancellationPolicy } from "@/lib/booking/logic";
-import { parseDateISO, weekdayOfDateISO, startOfDay, endOfDay, fromWallTime } from "@/lib/time/tz";
+import { parseDateISO, weekdayOfDateISO, startOfDay, endOfDay, fromWallTime, toDateISO } from "@/lib/time/tz";
 import { getPaymentProvider } from "@/lib/payments/provider";
 import { notify } from "@/lib/notifications";
 
@@ -19,7 +19,24 @@ export interface CreateBookingInput {
  * slots are built as Saigon wall-clock times converted to instants. The
  * result is identical no matter what timezone the server process runs in.
  */
-export interface AvailabilitySlot { startAt: Date; endAt: Date; price: number; available: boolean; past: boolean }
+export interface AvailabilitySlot { startAt: Date; endAt: Date; price: number | null; available: boolean; past: boolean }
+
+function operatingWindow(hours: { dayOfWeek: number; openTime: string; closeTime: string }[], dateISO: string) {
+  const { year, month, day } = parseDateISO(dateISO);
+  const schedule = hours.find((h) => h.dayOfWeek === weekdayOfDateISO(dateISO));
+  if (!schedule) return null;
+  const [openHour, openMinute] = schedule.openTime.split(":").map(Number);
+  const [closeHour, closeMinute] = schedule.closeTime.split(":").map(Number);
+  const openMinutes = openHour * 60 + openMinute;
+  let closeMinutes = closeHour * 60 + closeMinute;
+  if (!Number.isFinite(openMinutes) || !Number.isFinite(closeMinutes)) return null;
+  if (closeMinutes <= openMinutes) closeMinutes += 1440;
+  return {
+    openMinutes, closeMinutes,
+    startAt: fromWallTime(year, month, day, openHour, openMinute),
+    endAt: fromWallTime(year, month, day, Math.floor(closeMinutes / 60), closeMinutes % 60),
+  };
+}
 
 /**
  * Availability for one facility on one Saigon calendar date.
@@ -32,57 +49,76 @@ export async function getAvailability(facilityId: string, dateISO: string, db: i
     where: { id: facilityId },
     include: { venue: { include: { hours: true } }, priceRules: true },
   });
-  if (!facility) return null;
-  const { year, month, day } = parseDateISO(dateISO);
-  const weekday = weekdayOfDateISO(dateISO);
-  const hours = facility.venue.hours.find((h) => h.dayOfWeek === weekday);
-  if (!hours) return { facility, slots: [] as AvailabilitySlot[] };
-  const [oh, om] = hours.openTime.split(":").map(Number);
-  const [ch, cm] = hours.closeTime.split(":").map(Number);
+  if (!facility || facility.venue.status !== "APPROVED") return null;
   const dayStart = startOfDay(dateISO);
   const dayEnd = endOfDay(dateISO);
+  const previousDateISO = toDateISO(new Date(dayStart.getTime() - 1));
+  const startTimes: number[] = [];
+  for (const scheduleDate of [previousDateISO, dateISO]) {
+    const window = operatingWindow(facility.venue.hours, scheduleDate);
+    if (!window) continue;
+    for (let m = window.openMinutes; m + 60 <= window.closeMinutes; m += 60) {
+      const instant = window.startAt.getTime() + (m - window.openMinutes) * 60_000;
+      if (instant >= dayStart.getTime() && instant < dayEnd.getTime()) startTimes.push(instant);
+    }
+  }
+  const starts = [...new Set(startTimes)].sort((a, b) => a - b);
+  // shortcut: Date-scoped slots omit multi-hour starts crossing midnight; combine adjacent dates when that journey is needed.
+  if (starts.length === 0) return { facility, slots: [] as AvailabilitySlot[] };
+  const rangeEnd = new Date(starts[starts.length - 1] + 3_600_000);
   const bookings = await db.booking.findMany({
-    where: { facilityId, status: { in: ACTIVE_BOOKING_STATUSES }, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
+    where: { facilityId, status: { in: ACTIVE_BOOKING_STATUSES }, startAt: { lt: rangeEnd }, endAt: { gt: dayStart } },
   });
   const blocked = await db.blockedTime.findMany({
-    where: { facilityId, startAt: { lt: dayEnd }, endAt: { gt: dayStart } },
+    where: { facilityId, startAt: { lt: rangeEnd }, endAt: { gt: dayStart } },
   });
   const slots: AvailabilitySlot[] = [];
-  const openMinutes = oh * 60 + om;
-  const closeMinutes = ch * 60 + cm;
   const now = Date.now();
-  for (let m = openMinutes; m + 60 <= closeMinutes; m += 60) {
-    // Slot start = Saigon wall-clock (date, m minutes after midnight) as an instant.
-    const s = fromWallTime(year, month, day, Math.floor(m / 60), m % 60);
+  for (const instant of starts) {
+    const s = new Date(instant);
     const e = new Date(s.getTime() + 3_600_000);
     const conflict =
       bookings.some((b) => s.getTime() < b.endAt.getTime() && b.startAt.getTime() < e.getTime()) ||
       blocked.some((b) => s.getTime() < b.endAt.getTime() && b.startAt.getTime() < e.getTime());
-    let price = 0;
-    try { price = calculatePrice(facility.priceRules, s, e).total; } catch { price = 0; }
+    const price = facility.priceRules.length ? calculatePrice(facility.priceRules, s, e).total : null;
     // A slot is bookable only while its start is strictly in the future —
     // the same boundary createBooking enforces (IN_THE_PAST). Anything at
     // or before `now` is reported as `past` so the UI can label it
     // "already passed" instead of offering it and failing at confirm.
     const past = s.getTime() <= now;
-    slots.push({ startAt: s, endAt: e, price, available: !conflict && !past, past });
+    slots.push({ startAt: s, endAt: e, price, available: price !== null && !conflict && !past, past });
   }
   return { facility, slots };
 }
 
 export async function createBooking(input: CreateBookingInput) {
-  // Idempotency: same key returns the existing booking
+  function sameRequest(booking: { userId: string; facilityId: string; startAt: Date; endAt: Date }) {
+    if (booking.userId !== input.userId || booking.facilityId !== input.facilityId ||
+        booking.startAt.getTime() !== input.startAt.getTime() || booking.endAt.getTime() !== input.endAt.getTime()) {
+      throw new Error("IDEMPOTENCY_CONFLICT");
+    }
+  }
+  // A retry may return only this user's booking for the exact same request.
   const existing = await prisma.booking.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
-  if (existing) return { booking: existing, created: false };
+  if (existing) { sameRequest(existing); return { booking: existing, created: false }; }
 
   const facility = await prisma.facility.findUnique({
     where: { id: input.facilityId },
-    include: { venue: true, priceRules: true },
+    include: { venue: { include: { hours: true } }, priceRules: true },
   });
   if (!facility) throw new Error("FACILITY_NOT_FOUND");
   if (facility.venue.status !== "APPROVED") throw new Error("VENUE_NOT_APPROVED");
   if (input.endAt <= input.startAt) throw new Error("INVALID_RANGE");
   if (input.startAt.getTime() < Date.now() - 60_000) throw new Error("IN_THE_PAST");
+  const dateISO = toDateISO(input.startAt);
+  const previousDateISO = toDateISO(new Date(startOfDay(dateISO).getTime() - 1));
+  const insideHours = [dateISO, previousDateISO].some((date) => {
+    const window = operatingWindow(facility.venue.hours, date);
+    return window && input.startAt >= window.startAt && input.endAt <= window.endAt;
+  });
+  if (!insideHours) {
+    throw new Error("OUTSIDE_OPENING_HOURS");
+  }
 
   // Server-side price — client price is never trusted
   const price = calculatePrice(facility.priceRules, input.startAt, input.endAt);
@@ -94,10 +130,10 @@ export async function createBooking(input: CreateBookingInput) {
   const status = facility.venue.instantBooking ? "CONFIRMED" : "PENDING";
   const reference = makeReference();
 
-  const booking = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // Re-check idempotency + overlap INSIDE the transaction
     const dup = await tx.booking.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dup) return dup;
+    if (dup) { sameRequest(dup); return { booking: dup, created: false }; }
     const conflicts = await tx.booking.findMany({
       where: {
         facilityId: input.facilityId,
@@ -129,8 +165,17 @@ export async function createBooking(input: CreateBookingInput) {
     await tx.payment.create({
       data: { bookingId: created.id, userId: input.userId, provider: provider.name, status: charge.status, amount: price.total, simulated: provider.simulated },
     });
-    return created;
+    return { booking: created, created: true };
+  }).catch(async (error: unknown) => {
+    if ((error as { code?: string }).code === "P2002") {
+      const duplicate = await prisma.booking.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+      if (duplicate) { sameRequest(duplicate); return { booking: duplicate, created: false }; }
+    }
+    throw error;
   });
+
+  if (!result.created) return result;
+  const { booking } = result;
 
   await notify(input.userId, "BOOKING", status === "CONFIRMED" ? "Đặt sân thành công" : "Đặt sân đang chờ duyệt",
     `Mã ${booking.reference} — tổng ${booking.totalPrice.toLocaleString("vi-VN")} đ.`,
@@ -138,7 +183,7 @@ export async function createBooking(input: CreateBookingInput) {
   if (status === "PENDING") {
     await notify(facility.venue.ownerId, "BOOKING_PENDING", "Có yêu cầu đặt sân mới", `Mã ${booking.reference} đang chờ bạn duyệt.`, booking.id, `booking-pending-${booking.id}`);
   }
-  return { booking, created: true };
+  return result;
 }
 
 export async function transitionBooking(bookingId: string, toStatus: string, actorId: string, note?: string) {
