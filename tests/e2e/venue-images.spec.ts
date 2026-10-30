@@ -31,7 +31,7 @@ test("venue photos actually render on /venues page 1 (pixels, not just HTML)", a
 });
 
 test("venue detail hero photo actually renders", async ({ page }) => {
-  await page.goto("/venues/pickle-hub-binh-thanh");
+  await page.goto("/venues/aurora-sport-cau-long-pickleball-bong-ban");
   const hero = page.locator("img").first();
   await expect(hero).toBeVisible();
   await expect.poll(async () => (await imgInfo(hero)).nw, { timeout: 30000 }).toBeGreaterThan(0);

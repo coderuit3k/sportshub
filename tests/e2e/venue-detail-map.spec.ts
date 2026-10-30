@@ -10,7 +10,7 @@ import { test, expect } from "@playwright/test";
  * only, never on tile images or tile network traffic.
  */
 test("venue detail page renders a Leaflet map with one marker and no OSM embed iframe", async ({ page }) => {
-  await page.goto("/venues/smash-arena-thu-duc");
+  await page.goto("/venues/san-cau-long-dong-ho");
 
   const map = page.locator(".leaflet-container");
   await expect(map).toBeVisible();

@@ -13,7 +13,7 @@
     "db:generate": "prisma generate",
     "db:postgis": "tsx scripts/setup-postgis.ts",
     "venues:near": "tsx scripts/venues-within-radius.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "node --env-file-if-exists=.env --import tsx scripts/run-e2e.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1157.0",

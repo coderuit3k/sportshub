@@ -84,7 +84,7 @@ test("english /venues + venue detail render translated labels and real photos", 
   await page.goto("/venues/san-cau-long-dong-ho");
   await expect(page.getByRole("heading", { name: "Transparent pricing" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Book — / })).toBeVisible();
-  await expect(page.getByText("Verified venue")).toBeVisible();
+  await expect(page.getByText("Google reviews", { exact: true })).toBeVisible();
   await expect(page.getByText("Badminton").first()).toBeVisible();
   await expect(page.getByText("Parking").first()).toBeVisible();
   const hero = page.locator("img").first();

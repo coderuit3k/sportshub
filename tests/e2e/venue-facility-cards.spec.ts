@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  * widget (window CustomEvent) and scroll the widget into view.
  */
 test("facility cards render with photos; 'Đặt sân này' on the 2nd card selects it in the booking widget", async ({ page }) => {
-  await page.goto("/venues/smash-arena-thu-duc");
+  await page.goto("/venues/pooc-cau-long-pickleball");
 
   const widget = page.locator("#booking-widget");
   await expect(widget).toBeVisible();
