@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { SESSIONS_TAG } from "@/lib/public-data";
 import { sessionCreateLimiter, tooManyRequests } from "@/lib/rate-limit";
 
 const schema = z.object({
@@ -26,8 +28,9 @@ export async function POST(req: Request) {
       title: d.title, sportId: d.sportId, venueId: d.venueId || null, organizerId: user.id,
       startAt: new Date(d.startAt), endAt: new Date(d.endAt), skillLevel: d.skillLevel,
       maxParticipants: d.maxParticipants, costPerPerson: d.costPerPerson, description: d.description,
+      participants: { create: { userId: user.id, status: "JOINED" } },
     },
   });
-  await prisma.sessionParticipant.create({ data: { sessionId: session.id, userId: user.id, status: "JOINED" } });
+  revalidateTag(SESSIONS_TAG);
   return NextResponse.json({ session }, { status: 201 });
 }
