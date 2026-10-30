@@ -36,6 +36,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     return NextResponse.json({ booking: updated });
   } catch (e) {
+    if (e instanceof Error && e.message === "BOOKING_STATE_CHANGED") {
+      return NextResponse.json({ error: "Trạng thái đặt sân đã thay đổi; vui lòng tải lại", code: e.message }, { status: 409 });
+    }
     return NextResponse.json({ error: e instanceof Error ? e.message : "Lỗi" }, { status: 400 });
   }
 }
