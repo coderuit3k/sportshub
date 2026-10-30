@@ -129,7 +129,7 @@ export interface HourlySlot {
   startAt: string;
   endAt: string;
   startTime: string;
-  price: number;
+  price: number | null;
   available: boolean;
   /** True when the slot's start is not in the future (never bookable). */
   past: boolean;
@@ -148,12 +148,13 @@ export function aggregateSlots(hourly: HourlySlot[], duration: number): DisplayS
   const result: DisplaySlot[] = [];
   for (let i = 0; i + duration <= hourly.length; i++) {
     const group = hourly.slice(i, i + duration);
+    if (group.some((slot, index) => index > 0 && group[index - 1].endAt !== slot.startAt)) continue;
     result.push({
       startAt: group[0].startAt,
       endAt: group[group.length - 1].endAt,
       startTime: group[0].startTime,
-      price: group.reduce((sum, s) => sum + s.price, 0),
-      available: group.every((s) => s.available),
+      price: group.every((s) => s.price !== null) ? group.reduce((sum, s) => sum + (s.price ?? 0), 0) : null,
+      available: group.every((s) => s.available && s.price !== null),
       past: group[0].past,
     });
   }

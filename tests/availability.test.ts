@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fromWallTime } from "@/lib/time/tz";
+import { prisma } from "@/lib/db";
 
 /**
  * getAvailability past rule (regression): a slot used to be offered while
@@ -25,6 +26,7 @@ vi.mock("@/lib/db", () => ({
         ],
         venue: {
           id: "venue-1",
+          status: "APPROVED",
           // 2026-10-26 is a Monday; getUTCDay() matches weekdayOfDateISO.
           hours: [{ dayOfWeek: new Date(Date.UTC(2026, 9, 26)).getUTCDay(), openTime: "06:00", closeTime: "22:00" }],
         },
@@ -71,5 +73,42 @@ describe("getAvailability past rule", () => {
     }
     const future = slots.find((s) => s.startAt.getTime() === fromWallTime(2026, 10, 26, 19, 0, 0).getTime());
     expect(future).toMatchObject({ past: false, available: true, price: 180000 });
+  });
+
+  it("does not publish slots for an unapproved venue", async () => {
+    vi.mocked(prisma.facility.findUnique).mockResolvedValueOnce({
+      id: "fac-1", venue: { status: "PENDING_APPROVAL", hours: [] }, priceRules: [],
+    } as never);
+    expect(await getAvailability("fac-1", DATE_ISO)).toBeNull();
+  });
+
+  it("marks a future slot with no price rules unavailable and price unknown", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW.getTime());
+    vi.mocked(prisma.facility.findUnique).mockResolvedValueOnce({
+      id: "fac-1", venue: { status: "APPROVED", hours: [{ dayOfWeek: 1, openTime: "19:00", closeTime: "20:00" }] }, priceRules: [],
+    } as never);
+    expect((await getAvailability("fac-1", DATE_ISO))?.slots[0]).toMatchObject({ price: null, available: false });
+  });
+
+  it("offers overnight slots and checks conflicts through the following morning", async () => {
+    const overnight = {
+      id: "fac-1", venue: { status: "APPROVED", hours: [{ dayOfWeek: 1, openTime: "05:00", closeTime: "02:00" }] },
+      priceRules: [{ ruleType: "OFF_PEAK", pricePerHour: 100000 }],
+    };
+    vi.mocked(prisma.facility.findUnique).mockResolvedValue(overnight as never);
+    vi.mocked(prisma.booking.findMany).mockResolvedValueOnce([] as never).mockResolvedValueOnce([{
+      startAt: fromWallTime(2030, 1, 8, 1), endAt: fromWallTime(2030, 1, 8, 2),
+    }] as never);
+    const monday = await getAvailability("fac-1", "2030-01-07");
+    expect(monday?.slots.at(-1)?.startAt).toEqual(fromWallTime(2030, 1, 7, 23));
+    expect(monday?.slots.every((s) => s.startAt < fromWallTime(2030, 1, 8, 0))).toBe(true);
+    const tuesday = await getAvailability("fac-1", "2030-01-08");
+    expect(tuesday?.slots.map((s) => s.startAt)).toEqual([
+      fromWallTime(2030, 1, 8, 0), fromWallTime(2030, 1, 8, 1),
+    ]);
+    expect(tuesday?.slots.at(-1)?.available).toBe(false);
+    expect(vi.mocked(prisma.booking.findMany).mock.lastCall?.[0]).toMatchObject({
+      where: { startAt: { lt: fromWallTime(2030, 1, 8, 2) } },
+    });
   });
 });

@@ -91,6 +91,7 @@
     "processing": "Đang xử lý...",
     "slotBooked": "Đã đặt",
     "slotPast": "Đã qua giờ",
+    "priceUnavailable": "Chưa có giá",
     "slotsError": "Không tải được khung giờ — thử lại sau.",
     "statusCANCELLED": "CANCELLED",
     "statusCOMPLETED": "COMPLETED",
