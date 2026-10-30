@@ -428,6 +428,9 @@ describe("prepare_booking_handoff", () => {
     expect(res.status).toBe("ok");
     const h = res.data!;
     expect(h.totalPrice).toBe(100_000);
+    expect(h.venueDistrict).toBe("Thủ Đức");
+    expect(h.policySummary).toMatchObject({ fullRefundBeforeHours: 12, partialRefundBeforeHours: 4,
+      partialFeePercent: 30, provenance: "platform_reference" });
     expect(h.bookingUrl.startsWith("/venues/minh-khai-thu-duc?")).toBe(true);
     expect(h.bookingUrl).toContain("facility=f_thuduc");
     expect(h.bookingUrl).toContain(`date=${SAT}`);
