@@ -165,7 +165,7 @@ See `docs/geo-radius.md` for the SQL and the rationale.
 
 ## Quick start (PostgreSQL)
 
-Requirements: **Node.js 22+**, Git, PostgreSQL with PostGIS/btree_gist. Use a separate database ending `_dev` for local development and `_test` for automated tests.
+Requirements: **Node.js 22.12+**, Git, PostgreSQL with PostGIS/btree_gist. Use a separate database ending `_dev` for local development and `_test` for automated tests.
 
 ```bash
 git clone https://github.com/coderuit3k/sportshub.git

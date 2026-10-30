@@ -10,8 +10,8 @@ import { toolSpecsForPrompt, PROMPT_VERSION } from "@/lib/ai/prompts";
 describe("tool specs for the model", () => {
   const specs = toolSpecsForPrompt();
 
-  it("is prompt v7 (schema-complete tool specs)", () => {
-    expect(PROMPT_VERSION).toBe("sportshub-assistant-v10");
+  it("records the current schema-complete prompt version", () => {
+    expect(PROMPT_VERSION).toBe("sportshub-assistant-v11");
   });
 
   it("includes enum values for budget basis and review sources", () => {

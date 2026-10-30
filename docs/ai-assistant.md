@@ -80,7 +80,12 @@ are platform reference prices and the schedule is the SportsHub demo
 schedule whenever it quotes either (enforced in the system prompt and
 repeated in tool warnings and UI labels).
 
-## Decision policy (system prompt `sportshub-assistant-v10`)
+## Decision policy (system prompt `sportshub-assistant-v11`)
+
+Prompt v11 accompanies the Zod 4 security upgrade. Tool descriptions are generated
+through Zod's public input JSON Schema API, retaining enum/required/bounds/default
+and VND unit notes. State patches explicitly remove defaults before making fields
+optional, so omitted fields do not erase verified conversation context.
 
 Protocol diagnostics retain `lastSchemaRejection` separately from the last
 rejected final answer: JSON/schema category and up to eight schema issue

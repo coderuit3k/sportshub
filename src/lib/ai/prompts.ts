@@ -3,10 +3,11 @@
  * Bump PROMPT_VERSION on ANY behaviour-relevant change; traces record
  * it so evaluations can be attributed to a prompt revision.
  */
+import { z } from "zod";
 import { TOOLS } from "./tools";
 import { BUSINESS_TZ } from "@/lib/time/tz";
 
-export const PROMPT_VERSION = "sportshub-assistant-v10";
+export const PROMPT_VERSION = "sportshub-assistant-v11";
 export const ANSWER_SCHEMA_VERSION = "answer-v1";
 
 /**
@@ -22,94 +23,60 @@ export const ANSWER_SCHEMA_VERSION = "answer-v1";
  * required fields, enums, numeric bounds, string lengths, array
  * shapes, nested objects and the schema's own .describe() notes.
  */
-interface ZodDefLike {
-  typeName?: string;
-  shape?: Record<string, unknown> | (() => Record<string, unknown>);
-  checks?: { kind: string; value?: unknown }[];
-  values?: unknown[];
-  options?: unknown[];
-  type?: unknown;
-  innerType?: unknown;
-  schema?: unknown;
-  defaultValue?: () => unknown;
+interface InputJsonSchema {
+  type?: string;
+  properties?: Record<string, InputJsonSchema>;
+  required?: string[];
+  items?: InputJsonSchema;
+  enum?: unknown[];
+  anyOf?: InputJsonSchema[];
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+  pattern?: string;
   description?: string;
-  minLength?: { value?: number } | null;
-  maxLength?: { value?: number } | null;
-  value?: unknown;
+  default?: unknown;
 }
 
-function describeSchema(schema: unknown, depth = 0): string {
-  const def = (schema as { _def?: ZodDefLike })?._def;
-  if (!def || depth > 4) return "any";
-  const notes: string[] = [];
-  if (def.description) notes.push(def.description);
-  const note = () => (notes.length ? ` — ${notes.join("; ")}` : "");
-  switch (def.typeName) {
-    case "ZodOptional":
-      return `${describeSchema(def.innerType, depth + 1)} (optional)`;
-    case "ZodNullable":
-      return `${describeSchema(def.innerType, depth + 1)} (nullable)`;
-    case "ZodDefault":
-      return `${describeSchema(def.innerType, depth + 1)} (default ${JSON.stringify(def.defaultValue?.())})`;
-    case "ZodEffects":
-      return `${describeSchema(def.schema, depth + 1)}${note()}`;
-    case "ZodObject": {
-      const shape = typeof def.shape === "function" ? def.shape() : (def.shape ?? {});
-      const required: string[] = [];
-      const props: string[] = [];
-      for (const [key, sub] of Object.entries(shape)) {
-        const subDef = (sub as { _def?: ZodDefLike })?._def;
-        const optional = subDef?.typeName === "ZodOptional" || subDef?.typeName === "ZodDefault";
-        if (!optional) required.push(key);
-        props.push(`${key}: ${describeSchema(sub, depth + 1)}`);
-      }
+function describeSchema(def: InputJsonSchema, depth = 0): string {
+  if (depth > 4) return "any";
+  const notes: string[] = def.description ? [def.description] : [];
+  const note = () => notes.length ? ` — ${notes.join("; ")}` : "";
+  if (def.enum) return `enum[${def.enum.map((v) => JSON.stringify(v)).join(" | ")}]${note()}`;
+  if (def.anyOf) return `(${def.anyOf.map((v) => describeSchema(v, depth + 1)).join(" | ")})${note()}`;
+  switch (def.type) {
+    case "object": {
+      const required = def.required ?? [];
+      const props = Object.entries(def.properties ?? {}).map(([key, sub]) => {
+        const suffix = Object.hasOwn(sub, "default") ? ` (default ${JSON.stringify(sub.default)})`
+          : required.includes(key) ? "" : " (optional)";
+        return `${key}: ${describeSchema(sub, depth + 1)}${suffix}`;
+      });
       return `{${props.join(", ")}}${required.length ? ` [required: ${required.join(", ")}]` : ""}${note()}`;
     }
-    case "ZodString": {
-      for (const c of def.checks ?? []) {
-        if (c.kind === "max" && typeof c.value === "number") notes.push(`≤${c.value} chars`);
-        if (c.kind === "min" && typeof c.value === "number") notes.push(`≥${c.value} chars`);
-        if (c.kind === "regex") notes.push("pattern-constrained");
-      }
+    case "string":
+      if (def.minLength != null) notes.push(`≥${def.minLength} chars`);
+      if (def.maxLength != null) notes.push(`≤${def.maxLength} chars`);
+      if (def.pattern) notes.push("pattern-constrained");
       return `string${note()}`;
-    }
-    case "ZodNumber": {
-      let int = false;
-      for (const c of def.checks ?? []) {
-        if (c.kind === "int") int = true;
-        if (c.kind === "min" && typeof c.value === "number") notes.push(`≥${String(c.value)}`);
-        if (c.kind === "max" && typeof c.value === "number") notes.push(`≤${String(c.value)}`);
-        // Surface hand-written check messages (e.g. the VND unit
-        // explanation) — they exist precisely to stop model errors.
-        const msg = (c as { message?: string }).message;
-        if (msg && msg.includes("VND")) notes.push(msg);
-      }
-      return `${int ? "integer" : "number"}${note()}`;
-    }
-    case "ZodBoolean":
-      return `boolean${note()}`;
-    case "ZodEnum":
-      return `enum[${(def.values ?? []).map((v) => JSON.stringify(v)).join(" | ")}]${note()}`;
-    case "ZodArray": {
-      let s = `${describeSchema(def.type, depth + 1)}[]`;
-      if (def.minLength?.value != null) s += ` (min ${def.minLength.value})`;
-      if (def.maxLength?.value != null) s += ` (max ${def.maxLength.value})`;
-      return `${s}${note()}`;
-    }
-    case "ZodRecord":
-      return `object (free-form)${note()}`;
-    case "ZodLiteral":
-      return `literal ${JSON.stringify(def.value)}${note()}`;
-    case "ZodUnion":
-      return `(${(def.options ?? []).map((o) => describeSchema(o, depth + 1)).join(" | ")})${note()}`;
-    default:
-      return `any${note()}`;
+    case "integer":
+    case "number":
+      if (def.minimum != null) notes.push(`≥${def.minimum}`);
+      if (def.maximum != null) notes.push(`≤${def.maximum}`);
+      return `${def.type}${note()}`;
+    case "array":
+      return `${describeSchema(def.items ?? {}, depth + 1)}[]${def.minItems != null ? ` (min ${def.minItems})` : ""}${def.maxItems != null ? ` (max ${def.maxItems})` : ""}${note()}`;
+    case "boolean": return `boolean${note()}`;
+    default: return `any${note()}`;
   }
 }
 
 export function toolSpecsForPrompt(): string {
   return Object.values(TOOLS)
-    .map((t) => `- ${t.name}: ${t.description}\n  input: ${describeSchema(t.inputSchema)}`)
+    .map((t) => `- ${t.name}: ${t.description}\n  input: ${describeSchema(z.toJSONSchema(t.inputSchema, { io: "input" }) as InputJsonSchema)}`)
     .join("\n");
 }
 

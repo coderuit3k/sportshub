@@ -60,9 +60,17 @@ export const ConversationState = z.object({
 });
 export type ConversationState = z.infer<typeof ConversationState>;
 
-const StatePatch = ConversationState.partial().extend({
-  venueIds: z.array(z.string().max(80)).max(5).optional(),
-  criteria: z.array(z.string().max(80)).max(8).optional(),
+// Zod 4 applies nested defaults even inside optional fields; a patch must preserve absent keys.
+const StatePatch = z.object({
+  sportSlug: ConversationState.shape.sportSlug.removeDefault().optional(),
+  district: ConversationState.shape.district.removeDefault().optional(),
+  dateISO: ConversationState.shape.dateISO.removeDefault().optional(),
+  startTime: ConversationState.shape.startTime.removeDefault().optional(),
+  durationHours: ConversationState.shape.durationHours.removeDefault().optional(),
+  budgetAmount: ConversationState.shape.budgetAmount.removeDefault().optional(),
+  budgetBasis: ConversationState.shape.budgetBasis.removeDefault().optional(),
+  venueIds: ConversationState.shape.venueIds.removeDefault().optional(),
+  criteria: ConversationState.shape.criteria.removeDefault().optional(),
 });
 
 interface RuntimeRegistry {
@@ -174,7 +182,7 @@ const ModelReply = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("tool_call"),
     tool: z.string().min(1),
-    input: z.record(z.unknown()).default({}),
+    input: z.record(z.string(), z.unknown()).default({}),
     statePatch: StatePatch.optional(),
   }),
   z.object({

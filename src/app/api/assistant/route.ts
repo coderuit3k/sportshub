@@ -26,7 +26,7 @@ const schema = z.object({
    * context token binding it to this principal + conversation (see
    * src/lib/ai/session.ts); otherwise it is IGNORED, never partially
    * trusted. */
-  state: z.record(z.unknown()).optional(),
+  state: z.record(z.string(), z.unknown()).optional(),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(2000) }))
     .max(24)

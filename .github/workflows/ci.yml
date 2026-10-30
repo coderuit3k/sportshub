@@ -39,6 +39,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm ls --all > /dev/null
+      - run: npm audit --audit-level=high
       - run: npm run db:generate
       - run: npm run typecheck
       - run: npm test

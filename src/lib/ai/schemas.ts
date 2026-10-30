@@ -35,6 +35,7 @@ const vndAmount = (field: string) =>
       message: `${field} must be a full VND amount (e.g. 200000 for "200k"), not a thousands figure`,
     })
     .max(100_000_000)
+    .describe(`${field} must be a full VND amount (e.g. 200000 for "200k"), not a thousands figure`)
     .optional();
 
 export const SearchVenuesInput = z.object({
@@ -51,7 +52,8 @@ export type SearchVenuesArgs = z.infer<typeof SearchVenuesInput>;
 export const GetVenueProfileInput = z.object({
   venueId: z.string().min(1).max(80).optional(),
   slug: z.string().trim().max(120).optional(),
-}).refine((v) => Boolean(v.venueId || v.slug), { message: "venueId or slug is required" });
+}).refine((v) => Boolean(v.venueId || v.slug), { message: "venueId or slug is required" })
+  .describe("venueId or slug is required");
 export type GetVenueProfileArgs = z.infer<typeof GetVenueProfileInput>;
 
 export const SearchReviewEvidenceInput = z.object({
