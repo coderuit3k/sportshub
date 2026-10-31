@@ -1,3 +1,4 @@
+import { createPrismaClient } from "../src/lib/prisma-client";
 /**
  * "Venues within a radius" — the runnable form of the query
  * "sân trong bán kính 5km", backed by PostGIS (docs/geo-radius.md).
@@ -10,7 +11,6 @@
  * Requires the PostgreSQL Prisma client + PostGIS setup
  * (`npm run db:postgis`) — see docs/geo-radius.md.
  */
-import { PrismaClient } from "@prisma/client";
 import { findVenuesWithinRadius } from "../src/lib/geo/radius";
 
 // Load .env like the Prisma CLI does (see scripts/setup-postgis.ts).
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const sportSlug = arg("sport");
   const limit = Number(arg("limit") ?? "20");
 
-  const db = new PrismaClient();
+  const db = createPrismaClient();
   try {
     const hits = await findVenuesWithinRadius(db, { lat, lng, radiusKm, sportSlug, limit });
     console.log(

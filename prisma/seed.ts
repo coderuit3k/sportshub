@@ -1,9 +1,9 @@
-import { PrismaClient } from "@prisma/client";
+import { createPrismaClient } from "../src/lib/prisma-client";
 import bcrypt from "bcryptjs";
 import { ensureVenueCatalog } from "./catalog-store";
 import { ensureRealCatalog } from "./real-catalog";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
   let db: URL;

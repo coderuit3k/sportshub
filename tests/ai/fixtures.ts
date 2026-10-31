@@ -25,7 +25,7 @@
  *   a prompt-injection review, a price/cleanliness review.
  * - In-app reviews on v_thuduc: 1 organic + 1 seed (stats separation).
  */
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 import { createTestDb } from "../db";
 import { BudgetCounter, type ToolContext } from "@/lib/ai/types";
 import { fromWallTime } from "@/lib/time/tz";

@@ -1,5 +1,6 @@
+import { createPrismaClient } from "../src/lib/prisma-client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma/client";
 import { createTestDb } from "./db";
 import { changeSessionParticipation } from "@/services/sessions";
 
@@ -10,7 +11,7 @@ let second: PrismaClient;
 beforeAll(async () => {
   fixture = await createTestDb();
   first = fixture.db;
-  second = new PrismaClient({ datasources: { db: { url: fixture.url } } });
+  second = createPrismaClient(fixture.url);
   await first.sport.create({ data: { id: "sport-1", name: "Cầu lông", slug: "cau-long" } });
   await first.user.createMany({ data: [
     { id: "organizer", name: "Organizer", email: "organizer@test.local", passwordHash: "x" },

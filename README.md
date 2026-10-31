@@ -16,10 +16,10 @@ explains reviews, checks schedules and prepares bookings.
 ## Stack
 
 - Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind CSS 3
-- Prisma ORM **6.19.3 (pinned exactly)** — PostgreSQL for local dev, tests and
-  in production (`prisma/schema.postgresql.prisma`, hosted on Neon,
-  Singapore region). The pin matters: Prisma 7's CLI rejects this schema's
-  datasource syntax, so do not "upgrade" the CLI casually.
+- Prisma ORM **7.10.1 (pinned exactly)** with the PostgreSQL driver adapter.
+  Canonical schema: `prisma/schema.prisma`; CLI datasource/seed configuration:
+  `prisma.config.ts`. Generated client lives under `src/generated/prisma` and
+  does not need a native Rust query-engine binary.
 - Auth: bcryptjs + `jose` JWT in an httpOnly cookie. RBAC: `PLAYER` / `OWNER` / `ADMIN`
 - Maps: Leaflet over OpenStreetMap raster tiles (no API key, no WebGL)
 - Venue photo storage: Cloudflare R2 (S3-compatible, presigned uploads)
@@ -170,7 +170,7 @@ Requirements: **Node.js 22.12+**, Git, PostgreSQL with PostGIS/btree_gist. Use a
 ```bash
 git clone https://github.com/coderuit3k/sportshub.git
 cd sportshub
-npm ci                      # exact lockfile install (Prisma is pinned to 6.19.3)
+npm ci                      # exact lockfile install (Prisma CLI/client/adapter are pinned to 7.10.1)
 cp .env.example .env        # configure local PostgreSQL dev/test URLs
 npx prisma generate
 npx prisma db push
@@ -180,16 +180,17 @@ npm run dev                 # http://localhost:3000
 
 Notes:
 
-- `./node_modules/.bin/prisma --version` must print **6.19.3**. If it
-  prints 7.x, your install drifted (usually a broken earlier install);
-  delete `node_modules` and re-run `npm ci`. Do **not** edit the schema
-  to satisfy Prisma 7.
+- `./node_modules/.bin/prisma --version` must print **7.10.1**. Use the
+  lockfile and `npm run db:generate`; do not install a prerelease through an
+  unreviewed `prisma@latest` tag.
+- The PG adapter preserves URL `schema`, bounded connections and verified TLS.
+  Tests use generated schemas on explicit `_test` databases; schema push/seed
+  are never production build steps.
 - If npm reports *install scripts blocked* for `@prisma/engines`,
   `prisma`, `esbuild`, `@swc/core`, `sharp` or `@parcel/watcher`,
   approve them (`npm install-scripts approve @prisma/engines
   @prisma/client prisma esbuild @swc/core sharp @parcel/watcher`)
-  and re-run the install — without the Prisma engine scripts the
-  client cannot be generated and every later step fails.
+  and re-run the install, then generate the client before tests/build.
 - ⚠️ `npm run db:seed` **wipes and recreates** the database it points
   at. Never run it while `DATABASE_URL` points at production.
 - Later runs need only `npm run dev`.
@@ -260,7 +261,7 @@ fallback to shared Upstash counters. Details in the env table below.
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | yes | PostgreSQL _dev locally; pooled Neon URL in production |
-| `DATABASE_URL_UNPOOLED` | prod | Direct Neon connection used by build-time db push |
+| `DATABASE_URL_UNPOOLED` | maintenance only | Direct connection for separately reviewed DDL; never consumed by the production build |
 | `AUTH_SECRET` | yes | JWT signing secret |
 | `NEXT_PUBLIC_APP_URL` | yes | Public base URL of the deployment |
 | `AI_PROVIDER`, `AI_MODEL` | optional | Default `bedrock` + `anthropic.claude-haiku-4-5-20251001-v1:0`; `openai-compatible` switches provider |

@@ -27,7 +27,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../generated/prisma/client";
 import { BudgetCounter, ToolErrorCode, type ToolEnvelope } from "./types";
 import { TOOLS } from "./tools";
 import type { ChatModel, ModelMessage } from "./provider";

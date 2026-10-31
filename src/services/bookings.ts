@@ -44,7 +44,7 @@ function operatingWindow(hours: { dayOfWeek: number; openTime: string; closeTime
  * consumers like the AI assistant tools can run the EXACT same slot
  * logic against a test database — no re-implementation, no drift.
  */
-export async function getAvailability(facilityId: string, dateISO: string, db: import("@prisma/client").PrismaClient = prisma) {
+export async function getAvailability(facilityId: string, dateISO: string, db: import("../generated/prisma/client").PrismaClient = prisma) {
   const facility = await db.facility.findUnique({
     where: { id: facilityId },
     include: { venue: { include: { hours: true } }, priceRules: true },

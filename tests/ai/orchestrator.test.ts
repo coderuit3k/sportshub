@@ -6,7 +6,7 @@
  * real tool results, state override, and honest degradation.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 import { createAiFixtureDb, SAT } from "./fixtures";
 import { runAssistantTurn, __resetConversations } from "@/lib/ai/orchestrator";
 import { ScriptedModel, type ModelMessage } from "@/lib/ai/provider";

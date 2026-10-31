@@ -11,7 +11,7 @@
  * - geo_pend  PENDING_APPROVAL at centre → never matches (not public)
  */
 import { createTestDb } from "../db";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ensurePostgis } from "../../prisma/postgis";
 import { findVenuesWithinRadius } from "@/lib/geo/radius";

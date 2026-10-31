@@ -7,7 +7,7 @@ import { effectiveRating } from "@/lib/geo/rank";
 import { facilityMinPrice } from "@/lib/booking/logic";
 import { venueProvenance, type ProvenanceKind } from "../types";
 import { foldVi } from "../text";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../../generated/prisma/client";
 
 export interface VenueRow {
   id: string;

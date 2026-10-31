@@ -40,7 +40,7 @@
  * - The run ends with a loud summary line and throws unless the
  *   final google-venue count equals the data count (119).
  */
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../src/generated/prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import {
   CATALOG_OWNER_EMAIL,

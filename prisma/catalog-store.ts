@@ -40,7 +40,7 @@
  * by email (same credentials/name as the seed) without touching any
  * other user.
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma/client";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { CATALOG_VENUES, REMOVED_VENUE_SLUGS, SPORT_DEFS, type CatalogVenue } from "./venue-catalog";

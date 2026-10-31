@@ -1,7 +1,7 @@
+import { createPrismaClient } from "../src/lib/prisma-client";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { PrismaClient } from "@prisma/client";
 import { ensureBookingConstraint } from "../prisma/booking-constraint";
 
 export function testDatabaseUrl(value = process.env.TEST_DATABASE_URL): URL {
@@ -21,10 +21,10 @@ export async function createTestDb(value?: string) {
   const schema = `test_${randomUUID().replaceAll("-", "")}`;
   url.searchParams.set("schema", schema);
   const connection = url.toString();
-  execFileSync(process.execPath, [path.resolve("node_modules/prisma/build/index.js"), "db", "push", "--skip-generate"], {
+  execFileSync(process.execPath, [path.resolve("node_modules/prisma/build/index.js"), "db", "push"], {
     env: { ...process.env, DATABASE_URL: connection }, stdio: "pipe",
   });
-  const db = new PrismaClient({ datasources: { db: { url: connection } } });
+  const db = createPrismaClient(connection);
   const cleanup = async () => {
     try {
       // schema is generated above, never derived from user/database input.

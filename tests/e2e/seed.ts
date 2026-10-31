@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 
 /** Browser-only controlled community fixture, created after real-catalog convergence. */
 export async function seedBrowserSession(db: PrismaClient) {

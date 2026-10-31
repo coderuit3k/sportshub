@@ -2,7 +2,8 @@
 
 ## Local and CI
 
-Use Node.js 22+, PostgreSQL with PostGIS/btree_gist; Prisma stays 6.19.3.
+Use Node.js >=22.12, PostgreSQL with PostGIS/btree_gist; Prisma CLI/client/adapter
+are pinned to stable7.10.1. The approved next upgrade step aligns Node to26.x.
 The default schema is PostgreSQL. Development uses a separate `_dev` DB;
 TEST_DATABASE_URL and E2E_DATABASE_URL must point to `_test` databases.
 Never use existing production data for tests, seed or schema-push verification.
@@ -37,14 +38,17 @@ Git auto-deploy is disabled. Pinned Vercel CLI 65.8.0 pulls production configura
 builds and deploys prebuilt output. The build generates the PG client and runs
 Next.js; it performs no db push, seed, catalog sync or photo migration.
 
-Prisma generates both the build machine's native engine and `rhel-openssl-3.0.x`
-for the Vercel runtime. A prebuilt Ubuntu artifact otherwise contains only the
-Debian engine and fails at runtime despite a successful build. CI checks the
-generated RHEL engine. `outputFileTracingIncludes` explicitly includes the file
-in Node route traces; generating a second binary alone does not ensure Next.js
-packages it. E2E verifies health/discovery traces reference the real engine file.
-CD finds it in the function bundles before deployment, following shared-bundle
-symlinks instead of assuming one directory per route.
+Prisma7 uses the JS PostgreSQL adapter. The generated TypeScript client lives in
+`src/generated/prisma`; `prisma.config.ts` owns CLI datasource/seed settings.
+The client factory preserves schema/search_path for both model and raw queries,
+bounds pool/connect behavior and does not disable TLS verification. Generated
+moduleFormat=cjs preserves current scripts without a package-wide ESM change.
+
+The prior Prisma6 RHEL binary problem is obsolete with the new client. E2E now
+checks actual health and discovery queries through the compiled driver adapter.
+The legacy CD workflow is disabled during the approved upgrade; its replacement
+will use standalone output, staged runtime checks and gated promotion as specified
+in `docs/superpowers/specs/2026-10-31-cicd-plan-apply-design.md`.
 
 ## Rollout and rollback
 

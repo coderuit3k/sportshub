@@ -2,6 +2,7 @@ node_modules
 .next
 .next-e2e
 .vercel
+src/generated/prisma/
 *.db
 *.db-journal
 .env

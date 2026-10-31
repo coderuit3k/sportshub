@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma/client";
 import { createTestDb } from "./db";
 import { ensureRealCatalog } from "../prisma/real-catalog";
 import { REAL_GOOGLE_REVIEWS } from "../prisma/real-reviews-data";

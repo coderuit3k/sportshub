@@ -23,7 +23,7 @@
  * try/catch (a PostGIS problem must never fail the build), while the
  * local setup script lets it throw.
  */
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../src/generated/prisma/client";
 
 export interface PostgisStatus {
   extensionInstalled: boolean;
