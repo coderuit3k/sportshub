@@ -37,6 +37,11 @@ Git auto-deploy is disabled. Pinned Vercel CLI 65.8.0 pulls production configura
 builds and deploys prebuilt output. The build generates the PG client and runs
 Next.js; it performs no db push, seed, catalog sync or photo migration.
 
+Prisma generates both the build machine's native engine and `rhel-openssl-3.0.x`
+for the Vercel runtime. A prebuilt Ubuntu artifact otherwise contains only the
+Debian engine and fails at runtime despite a successful build. CI checks the
+generated RHEL engine; CD checks it inside the health function before deployment.
+
 ## Rollout and rollback
 
 Test the integrated candidate first. Merge the Git auto-deploy-disable change
