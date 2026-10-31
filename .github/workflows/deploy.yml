@@ -61,7 +61,9 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          test -f .vercel/output/functions/api/health.func/node_modules/.prisma/client/libquery_engine-rhel-openssl-3.0.x.so.node
+          find -L .vercel/output/functions -name libquery_engine-rhel-openssl-3.0.x.so.node -type f -print > "$RUNNER_TEMP/prisma-runtime-engines.txt"
+          test -s "$RUNNER_TEMP/prisma-runtime-engines.txt"
+          cat "$RUNNER_TEMP/prisma-runtime-engines.txt"
           current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
           test "$current" = "$RELEASE_SHA"
           npx --yes vercel@65.8.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"

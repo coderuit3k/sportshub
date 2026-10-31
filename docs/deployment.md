@@ -40,7 +40,8 @@ Next.js; it performs no db push, seed, catalog sync or photo migration.
 Prisma generates both the build machine's native engine and `rhel-openssl-3.0.x`
 for the Vercel runtime. A prebuilt Ubuntu artifact otherwise contains only the
 Debian engine and fails at runtime despite a successful build. CI checks the
-generated RHEL engine; CD checks it inside the health function before deployment.
+generated RHEL engine; CD finds it in the function bundles before deployment,
+following shared-bundle symlinks instead of assuming one directory per route.
 
 ## Rollout and rollback
 
