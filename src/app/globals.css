@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+:root { --font-jakarta: "Plus Jakarta Sans Variable"; --font-inter: "Inter Variable"; }
+
 body { @apply bg-slate-50 text-ink antialiased; }
 .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-semibold text-white hover:bg-primary-dark transition disabled:opacity-50; }
 .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-lg bg-secondary px-4 py-2.5 font-semibold text-white hover:opacity-90 transition; }

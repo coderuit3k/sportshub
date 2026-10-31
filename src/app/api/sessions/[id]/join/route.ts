@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!parsed.success) return NextResponse.json({ error: "Hành động không hợp lệ" }, { status: 400 });
   try {
     const result = await changeSessionParticipation(id, user.id, parsed.data.action);
-    revalidateTag(SESSIONS_TAG);
+    revalidateTag(SESSIONS_TAG, { expire: 0 });
     if (result.joined) {
       await notify(result.session.organizerId, "SESSION", "Có người tham gia kèo", `${user.name} vừa tham gia: ${result.session.title}`, id, `join-${id}-${user.id}`);
     }

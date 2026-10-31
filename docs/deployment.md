@@ -2,8 +2,10 @@
 
 ## Local and CI
 
-Use Node.js >=22.12, PostgreSQL with PostGIS/btree_gist; Prisma CLI/client/adapter
-are pinned to stable7.10.1. The approved next upgrade step aligns Node to26.x.
+Use Node.js26.13.0/npm12.2.1, PostgreSQL with PostGIS/btree_gist; Prisma CLI/client/adapter
+are pinned to stable7.10.1. CI/build/runtime align to26.x; dependency install scripts
+are explicitly approved by package/version. TypeScript7 CLI and the API6 compatibility
+package are checked separately. Fonts are local assets, not build-time Google requests.
 The default schema is PostgreSQL. Development uses a separate `_dev` DB;
 TEST_DATABASE_URL and E2E_DATABASE_URL must point to `_test` databases.
 Never use existing production data for tests, seed or schema-push verification.

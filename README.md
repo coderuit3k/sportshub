@@ -15,7 +15,7 @@ explains reviews, checks schedules and prepares bookings.
 
 ## Stack
 
-- Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind CSS 3
+- Next.js 16.4.3 (App Router) + React 19.3.1 + TypeScript 7 strict + Tailwind CSS 3
 - Prisma ORM **7.10.1 (pinned exactly)** with the PostgreSQL driver adapter.
   Canonical schema: `prisma/schema.prisma`; CLI datasource/seed configuration:
   `prisma.config.ts`. Generated client lives under `src/generated/prisma` and
@@ -165,7 +165,7 @@ See `docs/geo-radius.md` for the SQL and the rationale.
 
 ## Quick start (PostgreSQL)
 
-Requirements: **Node.js 22.12+**, Git, PostgreSQL with PostGIS/btree_gist. Use a separate database ending `_dev` for local development and `_test` for automated tests.
+Requirements: **Node.js 26.13.0 / npm 12.2.1**, Git, PostgreSQL with PostGIS/btree_gist. Use a separate database ending `_dev` for local development and `_test` for automated tests.
 
 ```bash
 git clone https://github.com/coderuit3k/sportshub.git
@@ -186,11 +186,14 @@ Notes:
 - The PG adapter preserves URL `schema`, bounded connections and verified TLS.
   Tests use generated schemas on explicit `_test` databases; schema push/seed
   are never production build steps.
-- If npm reports *install scripts blocked* for `@prisma/engines`,
-  `prisma`, `esbuild`, `@swc/core`, `sharp` or `@parcel/watcher`,
-  approve them (`npm install-scripts approve @prisma/engines
-  @prisma/client prisma esbuild @swc/core sharp @parcel/watcher`)
-  and re-run the install, then generate the client before tests/build.
+- Install-script approvals are pinned in `package.json#allowScripts` for npm12.
+  If a dependency update changes an install script/version, inspect
+  `npm install-scripts ls` and review that package before approving it. Do not
+  globally allow all scripts to make a build green.
+- TypeScript7 provides `tsc`; the `typescript` alias supplies Microsoft's
+  TypeScript6 compiler API compatibility for Next/ESLint. `npm run typecheck`
+  generates current Next route types before checking. Fonts are self-hosted
+  from the existing Inter/Plus Jakarta Sans families; builds do not fetch Google.
 - ⚠️ `npm run db:seed` **wipes and recreates** the database it points
   at. Never run it while `DATABASE_URL` points at production.
 - Later runs need only `npm run dev`.

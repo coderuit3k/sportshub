@@ -16,7 +16,7 @@ src/
     time/tz.ts    # business-timezone helpers (Asia/Ho_Chi_Minh) — see "Timezone" below
     payments/     # provider abstraction — SimulatedPaymentProvider only
     notifications.ts  # in-app notifications with dedupeKey
-  middleware.ts   # protects /my-bookings, /profile, /owner, /admin, /favorites, /notifications; role gates
+  proxy.ts        # protects /my-bookings, /profile, /owner, /admin, /favorites, /notifications; role gates
 prisma/           # schema.prisma (PostgreSQL), seed.ts, booking-constraint.ts
 tests/            # Vitest unit tests for pure logic
 ```
@@ -417,7 +417,7 @@ per IP, booking 30 / 10 min per user.
 **Extension (2026-10-26): the whole API is covered.** Every route under
 `src/app/api` now sits behind two layers:
 
-1. **Global safety net (middleware).** `src/middleware.ts` matches
+1. **Global safety net (Node proxy).** `src/proxy.ts` matches
    `/api/:path*` and consumes `apiGlobalLimiter` — 600 requests / 10 min
    per IP — before any handler runs; `/api/health` is exempt (uptime
    probes must never be throttled). Middleware was chosen over wiring a

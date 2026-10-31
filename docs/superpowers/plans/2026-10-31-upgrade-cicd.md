@@ -82,3 +82,10 @@ validate Vercel deployment identity; smoke health/content; promote exact candida
 
 - Ruling: last PR1 local E2E build hit Google Fonts timeouts (prior candidate23E2Epassed). No test bypass; require exact-head CI E2E green. PR2 will self-host the existing font families to remove this observed build-network dependency.
 - vercel-plan secrets names verified: VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_AUTOMATION_BYPASS_SECRET. Values never read or logged.
+
+- PR1 merged as PR19/main2a319b6 after exact-head CI green (452tests bothTZ/scripted50/23E2E). Branch deleted; legacy CD stays disabled.
+- Task2 stable npm registry reports npm12.2.1 (newer than Node distribution11.20); pin npm12 and review explicit install-script allowlist. Isolated local Node26/npm12 cache used; system Node unchanged.
+
+- Task2 evidence: Node26 typecheck(native7/API6), 452UTC PG tests,23E2E, audit0 and valid dependency tree pass. Next16 cache invalidation uses expire0 to preserve immediate semantics; global API net moved intact to Node proxy. Fonts self-hosted; npm12 install scripts individually pinned.
+
+- Task2 review: no blockers; exact5cachecalls, proxy auth/net parity, Vietnamese/Latin font faces verified. Fresh npm12 ci +Prisma7generate +Nexttypegen/native7 typecheck pass. Final unit config uses .mts/import.meta.dirname; native-loader warning removed.

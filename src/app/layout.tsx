@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
+import "@fontsource-variable/plus-jakarta-sans";
+import "@fontsource-variable/inter";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import "./globals.css";
 import Header from "@/components/Header";
-
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin", "vietnamese"], variable: "--font-jakarta" });
-const inter = Inter({ subsets: ["latin", "vietnamese"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: { default: "SportsHub — Find Your Sport. Find Your Court. Find Your People.", template: "%s | SportsHub" },
@@ -20,7 +18,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const messages = await getMessages();
   const t = await getTranslations("footer");
   return (
-    <html lang={locale} className={`${jakarta.variable} ${inter.variable}`}>
+    <html lang={locale}>
       <body className="font-sans">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Header />

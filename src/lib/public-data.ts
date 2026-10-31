@@ -16,7 +16,7 @@ import { effectiveRating } from "@/lib/geo/rank";
  *
  * Every function returns plain serializable DTOs (no `Date` objects — the
  * data cache JSON-serializes its payload). Invalidation: mutations that
- * change public venue data call `revalidateTag("venues")`; TTL expiry is
+ * change public venue data call `revalidateTag("venues", { expire: 0 })`; TTL expiry is
  * the backstop.
  */
 

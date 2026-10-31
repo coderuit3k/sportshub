@@ -75,7 +75,7 @@ export async function DELETE(req: Request) {
       }
     }
   }
-  revalidateTag(VENUES_TAG);
+  revalidateTag(VENUES_TAG, { expire: 0 });
   return NextResponse.json({ ok: true });
 }
 
@@ -104,6 +104,6 @@ export async function POST(req: Request) {
       data: { venueId, url: photoUrl, caption: access.venue.name, sortOrder: 0 },
     });
   }
-  revalidateTag(VENUES_TAG);
+  revalidateTag(VENUES_TAG, { expire: 0 });
   return NextResponse.json({ ok: true, imageUrl: photoUrl });
 }
