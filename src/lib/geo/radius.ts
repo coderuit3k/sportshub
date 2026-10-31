@@ -13,7 +13,7 @@
  * without coordinates is excluded by the WHERE clause, never treated
  * as distance 0.
  */
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../generated/prisma/client";
 
 export interface VenueRadiusHit {
   venueId: string;

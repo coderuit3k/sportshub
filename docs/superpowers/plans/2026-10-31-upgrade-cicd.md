@@ -73,3 +73,12 @@ validate Vercel deployment identity; smoke health/content; promote exact candida
 
 - Approved user direction and scope recorded. CD legacy workflow disabled; CI remains enabled.
 - Design/builder review complete; no production data changes authorized or performed.
+
+- Ruling: generated Prisma7 client uses documented moduleFormat=cjs with TS imports to preserve current script/config entry points; no package-wide ESM rewrite needed in PR1.
+
+- PR1 evidence: 447 PG tests pass in UTC and HCM; schema/model diff empty; lazy-client regression red→green; raw/model schema isolation and safe URL/timeout/TLS guards pass. E2E and CI pending.
+
+- PR1 review found URL TLS bypasses; regression red→green now uses the same pg parser (already installed, declared explicitly). Final full suite452pass bothTZ, typecheck/tree/audit0pass; exact-head E2E running.
+
+- Ruling: last PR1 local E2E build hit Google Fonts timeouts (prior candidate23E2Epassed). No test bypass; require exact-head CI E2E green. PR2 will self-host the existing font families to remove this observed build-network dependency.
+- vercel-plan secrets names verified: VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_AUTOMATION_BYPASS_SECRET. Values never read or logged.

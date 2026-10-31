@@ -13,7 +13,7 @@
  * these tests cover the tools' read/quote behaviour on PG.)
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 import { createAiFixturePgDb, fixtureCtx, FRI, SAT } from "./fixtures";
 import { searchVenues } from "@/lib/ai/tools/search-venues";
 import { getReviewSummaryStats } from "@/lib/ai/tools/review-stats";

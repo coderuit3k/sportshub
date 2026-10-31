@@ -7,7 +7,7 @@
  * - Saturday: booking occupies 18:00–19:00, a block occupies 20:00–21:00.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 import { createAiFixtureDb, fixtureCtx, FRI, SAT } from "./fixtures";
 import { searchVenues } from "@/lib/ai/tools/search-venues";
 import { getVenueProfile } from "@/lib/ai/tools/get-venue-profile";

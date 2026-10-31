@@ -1,4 +1,4 @@
-import type { PrismaClient, User, Venue } from "@prisma/client";
+import type { PrismaClient, User, Venue } from "../../generated/prisma/client";
 
 /**
  * Who may manage a venue's stored photo (upload / replace / revert):

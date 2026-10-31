@@ -39,7 +39,7 @@
  * row update after its upload completes.
  */
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../src/generated/prisma/client";
 import { venueImage } from "../src/lib/venue-images";
 import {
   R2_ENV_VARS,

@@ -1,6 +1,7 @@
+import { createPrismaClient } from "../src/lib/prisma-client";
 /**
- * Production database bootstrap — runs inside the Vercel build (see vercel.json),
- * after `prisma db push` against the PostgreSQL schema.
+ * Legacy database maintenance with data/storage effects; never part of Vercel builds.
+ * Run only under a separately reviewed maintenance plan after schema preparation.
  *
  * 1. Ensures the booking_no_overlap_active exclusion constraint exists
  *    (same SQL as prisma/postgresql/booking_no_overlap.sql — tsrange variant,
@@ -40,18 +41,16 @@
  *    a PostGIS problem is logged and the deploy proceeds without
  *    radius search (retried next build).
  *
- * Uses DATABASE_URL from the environment; the build command points it at
- * DATABASE_URL_UNPOOLED for DDL reliability (Neon pooled endpoints are not
- * suitable for schema/constraint DDL).
+ * Uses DATABASE_URL from the explicit maintenance environment. A reviewed DDL
+ * operation may need a direct connection; production builds never invoke this tool.
  */
-import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
 import { ensureRealCatalog } from "./real-catalog";
 import { migrateVenuePhotosToStorage } from "./photo-migration";
 import { ensurePostgis } from "./postgis";
 import { ensureBookingConstraint } from "./booking-constraint";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function ensureConstraint(): Promise<void> {
   await ensureBookingConstraint(prisma);

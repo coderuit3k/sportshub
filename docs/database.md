@@ -52,3 +52,12 @@ The same constraint is applied to automated test schemas. Concurrent insert test
 - Indexes: Venue(city, district), Venue(status), Booking(userId, startAt), Booking(facilityId, status), SportsSession(sportId, venueId, startAt), Review(venueId), Notification(userId, isRead).
 - Timestamps stored as given by the server (UTC in production); displayed converted to Asia/Ho_Chi_Minh.
 - `priceSnapshot` / `policySnapshot` are JSON strings (the existing storage contract is preserved) — parsed at read time.
+
+## Prisma7 driver migration
+
+The generated client uses stable7.10.1 and `@prisma/adapter-pg`. Constructors are
+centralized in `src/lib/prisma-client.ts`; CLI URLs and seed live in
+`prisma.config.ts`. Prisma6 and Prisma7 models compare as an empty migration,
+including canonical/legacy PG schema parity. No production DDL/data operation
+is part of this change. Tests check raw/model isolation with reused IDs and URL
+search_path overrides, booking exclusion constraints, capacity races and both TZs.

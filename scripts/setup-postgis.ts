@@ -1,3 +1,4 @@
+import { createPrismaClient } from "../src/lib/prisma-client";
 /**
  * One-time (idempotent) PostGIS setup for a PostgreSQL database:
  * installs the `postgis` extension — the only database object radius
@@ -11,7 +12,6 @@
  *   DATABASE_URL=postgresql://user:pass@localhost:5432/sportshub \
  *     npm run db:postgis
  */
-import { PrismaClient } from "@prisma/client";
 import { ensurePostgis } from "../prisma/postgis";
 
 // Load .env like the Prisma CLI does, so DATABASE_URL can live only
@@ -27,13 +27,13 @@ async function main(): Promise<void> {
   const url = process.env.DATABASE_URL ?? "";
   if (!url.startsWith("postgres")) {
     console.error(
-      "DATABASE_URL must point at PostgreSQL (PostGIS does not exist on the SQLite dev database).\n" +
+      "DATABASE_URL must point at PostgreSQL.\n" +
         "Also make sure the generated Prisma client matches: " +
-        "npx prisma generate --schema prisma/schema.postgresql.prisma",
+        "npm run db:generate",
     );
     process.exit(1);
   }
-  const db = new PrismaClient();
+  const db = createPrismaClient();
   try {
     const status = await ensurePostgis(db);
     console.log("PostGIS setup complete:");

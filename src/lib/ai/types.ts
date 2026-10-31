@@ -103,7 +103,7 @@ export const ToolErrorCode = {
  * so a composite cannot launder unlimited work past the request budget.
  */
 export interface ToolContext {
-  db: import("@prisma/client").PrismaClient;
+  db: import("../../generated/prisma/client").PrismaClient;
   now: Date;
   budget: BudgetCounter;
   /** Hard per-tool deadline in ms (enforced by the orchestrator too). */
