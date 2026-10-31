@@ -79,7 +79,7 @@ describe("session join capacity", () => {
     expect((await action("player-a", "leave")).status).toBe(200);
     expect(state.session.status).toBe("OPEN");
     expect(state.joined.size).toBe(1);
-    expect(mocks.revalidate).toHaveBeenCalledWith("sessions");
+    expect(mocks.revalidate).toHaveBeenCalledWith("sessions", { expire: 0 });
   });
 
   it("does not join a cancelled session", async () => {

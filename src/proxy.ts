@@ -7,7 +7,7 @@ const secret = new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-only-sec
 /** Uptime/readiness probe — never throttled (see the API branch below). */
 const HEALTH_PATH = "/api/health";
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   if (path === "/api" || path.startsWith("/api/")) {

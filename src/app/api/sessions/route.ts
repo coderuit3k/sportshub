@@ -31,6 +31,6 @@ export async function POST(req: Request) {
       participants: { create: { userId: user.id, status: "JOINED" } },
     },
   });
-  revalidateTag(SESSIONS_TAG);
+  revalidateTag(SESSIONS_TAG, { expire: 0 });
   return NextResponse.json({ session }, { status: 201 });
 }

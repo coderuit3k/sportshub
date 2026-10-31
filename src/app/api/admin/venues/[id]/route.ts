@@ -22,7 +22,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // The venue's public visibility just changed: drop every cached public
   // payload carrying venue data (home, list, this venue's detail) instead
   // of waiting out the TTL. See src/lib/public-data.ts.
-  revalidateTag(VENUES_TAG);
+  revalidateTag(VENUES_TAG, { expire: 0 });
   revalidatePath("/");
   revalidatePath("/venues");
   revalidatePath(`/venues/${venue.slug}`);

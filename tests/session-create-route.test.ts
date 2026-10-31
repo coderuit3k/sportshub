@@ -32,7 +32,7 @@ describe("POST /api/sessions", () => {
       data: { participants: { create: { userId: "organizer", status: "JOINED" } } },
     });
     expect(mocks.createParticipant).not.toHaveBeenCalled();
-    expect(mocks.revalidate).toHaveBeenCalledWith("sessions");
+    expect(mocks.revalidate).toHaveBeenCalledWith("sessions", { expire: 0 });
   });
 
   it("does not invalidate the cache when the atomic create fails", async () => {

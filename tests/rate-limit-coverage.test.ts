@@ -29,7 +29,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const API_DIR = path.resolve(process.cwd(), "src/app/api");
-const MIDDLEWARE = path.resolve(process.cwd(), "src/middleware.ts");
+const MIDDLEWARE = path.resolve(process.cwd(), "src/proxy.ts");
 const MUTATIONS = ["POST", "PUT", "PATCH", "DELETE"];
 
 interface Classification {
